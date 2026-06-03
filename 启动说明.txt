@@ -1,0 +1,21 @@
+字幕翻译 v1.0.0 —— 部署/启动说明
+打包时间：2026/6/3 00:52:53
+
+【这是什么】
+Next.js standalone 最小部署包。已含服务端、必要依赖与静态资源，无需再 npm install / npm run build。
+
+【启动】
+  node server.js
+默认监听 3000 端口。可用环境变量：
+  PORT=3000        端口
+  HOSTNAME=0.0.0.0 监听地址（公网/反代场景常设 0.0.0.0）
+示例（Linux）：
+  PORT=3000 HOSTNAME=0.0.0.0 node server.js
+
+【宝塔「Node 项目」】
+  项目目录指向本文件夹；启动命令：node server.js；用 PM2 守护。
+  再用「反向代理」把域名转到该端口，开 HTTPS，并设置网站密码（Basic Auth）。
+
+【更换 logo/标题/描述】
+  这些在构建时已固化。需要修改请回到源码改 src/config/site.ts 后重新 npm run release。
+  详见 docs/站点定制说明.md。
