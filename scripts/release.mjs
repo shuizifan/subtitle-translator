@@ -58,8 +58,12 @@ const version = pkg.version || "1.0.0";
 
 // 1) 构建
 if (!skipBuild) {
-  log("执行 next build ...");
-  execSync("npm run build", { cwd: root, stdio: "inherit" });
+  log("执行 next build（standalone 模式）...");
+  execSync("npm run build", {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, NEXT_OUTPUT: "standalone" },
+  });
 } else {
   log("跳过构建（--no-build）");
 }

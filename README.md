@@ -2,6 +2,8 @@
 
 上传字幕文件 → 调用 OpenAI 兼容大模型翻译 → 生成双语字幕 → 按媒体服务器命名规则导出下载。
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fshuizifan%2Fsubtitle-translator)
+
 v1 仅处理**字幕文件**（不处理视频、不做语音识别/转码/内嵌），格式支持 **SRT**。
 ASS / VTT / LRC 解析与完整 ASS 样式为后续阶段。
 
@@ -36,7 +38,7 @@ ASS / VTT / LRC 解析与完整 ASS 样式为后续阶段。
 npm install
 npm run dev        # http://localhost:3000
 npm test           # 运行核心单测（解析往返、行对齐、命名、编码等）
-npm run build      # 生产构建（standalone 产物）
+npm run build      # 生产构建
 ```
 
 API 配置（Base URL / API Key / 模型名）在页面第 3 步手填，存浏览器 localStorage，
