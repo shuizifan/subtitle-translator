@@ -132,7 +132,7 @@ export function parseTranslationResponse(content: string): Map<number, string> {
   const oa = s.indexOf("{");
   const ob = s.lastIndexOf("}");
   if (oa !== -1 && ob !== -1 && ob > oa) {
-    tryArray(s.slice(oa, ob + 1));
+    if (tryArray(s.slice(oa, ob + 1))) return result;
   }
   return result;
 }
