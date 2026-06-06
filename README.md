@@ -2,10 +2,12 @@
 
 上传字幕 → 调用 AI 大模型翻译 → 生成双语字幕 → 按媒体服务器规范命名导出。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fshuizifan%2Fsubtitle-translator)
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/shuizifan/subtitle-translator)
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https://github.com/shuizifan/subtitle-translator)
-[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/new?template=subtitle-translator&username=shuizifan)
+<p align="center">
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fshuizifan%2Fsubtitle-translator"><img src="https://img.shields.io/badge/Deploy%20to%20Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Deploy to Vercel" /></a>
+  <a href="https://app.netlify.com/start/deploy?repository=https://github.com/shuizifan/subtitle-translator"><img src="https://img.shields.io/badge/Deploy%20to%20Netlify-00C7B7?style=for-the-badge&logo=netlify&logoColor=white" alt="Deploy to Netlify" /></a>
+  <a href="https://railway.com/new/template?template=https://github.com/shuizifan/subtitle-translator"><img src="https://img.shields.io/badge/Deploy%20to%20Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" alt="Deploy to Railway" /></a>
+  <a href="https://zeabur.com/new?template=subtitle-translator&username=shuizifan"><img src="https://img.shields.io/badge/Deploy%20to%20Zeabur-6C47FF?style=for-the-badge&logo=zeabur&logoColor=white" alt="Deploy to Zeabur" /></a>
+</p>
 
 ## 功能特性
 
