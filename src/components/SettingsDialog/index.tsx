@@ -114,6 +114,20 @@ function ServiceTab({
   patch: (p: Partial<SettingsSnapshot>) => void;
 }) {
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string } | "loading">>({});
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyShareLink = (p: ApiProfile) => {
+    const params = new URLSearchParams();
+    if (p.apiKey) params.set("apiKey", p.apiKey);
+    if (p.baseURL) params.set("baseURL", p.baseURL);
+    if (p.model) params.set("model", p.model);
+    if (p.name) params.set("name", p.name);
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(p.id);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
 
   const updateProfile = (id: string, p: Partial<ApiProfile>) =>
     patch({ apiProfiles: draft.apiProfiles.map((x) => (x.id === id ? { ...x, ...p } : x)) });
@@ -191,6 +205,9 @@ function ServiceTab({
           <div className="mt-3 flex items-center gap-3">
             <button className="btn-secondary" onClick={() => test(p)} disabled={!p.baseURL || !p.apiKey || !p.model || results[p.id] === "loading"}>
               {results[p.id] === "loading" ? "测试中…" : "测试连接"}
+            </button>
+            <button className="btn-secondary" onClick={() => copyShareLink(p)} disabled={!p.apiKey && !p.baseURL}>
+              {copied === p.id ? "✓ 已复制" : "复制分享链接"}
             </button>
             {results[p.id] && results[p.id] !== "loading" && (
               <span className={`text-sm ${(results[p.id] as any).ok ? "text-green-600" : "text-red-600"}`}>{(results[p.id] as any).message}</span>
