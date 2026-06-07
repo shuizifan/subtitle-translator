@@ -76,14 +76,14 @@ export const DEFAULT_STYLE: StyleConfig = {
 };
 
 /**
- * ASS 专用字号配置（SRT 无效）。
- * 字号以「占视频画面高度的百分比」表示——ASS 渲染时按 PlayResY 比例缩放，
- * 因此同一份文件在手机/电脑上相对画面大小一致，不会过大或过小。
- * 译文（观众主读）略大、原文（参考）略小。
+ * ASS 专用样式配置（SRT 无效）。
+ * 默认「忠实保留源字幕样式」——不动源文件的字体/字号/颜色，只翻译文字。
+ * 开启 forceStyle 后才用统一样式覆盖：剥离源对白的内联字体/字号/颜色标签，
+ * 套上「译文大、原文小」（字号以占视频高度百分比表达，按 PlayResY 折算，跨设备一致）。
  */
 export interface AssStyleConfig {
-  /** 是否覆盖对白字号（默认开，给出"译文大/原文小"的稳妥默认）。 */
-  resizeEnabled: boolean;
+  /** 强制统一样式（覆盖源内联字体/字号/颜色）；默认 false＝忠实保留源样式。 */
+  forceStyle: boolean;
   /** 译文字号占视频高度的百分比（如 5.5）。 */
   translationPct: number;
   /** 原文字号占视频高度的百分比（如 4.2）。 */
@@ -93,7 +93,7 @@ export interface AssStyleConfig {
 }
 
 export const DEFAULT_ASS_STYLE: AssStyleConfig = {
-  resizeEnabled: true,
+  forceStyle: false,
   translationPct: 5.5,
   originalPct: 4.2,
   fontName: "",

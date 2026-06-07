@@ -5,6 +5,7 @@ import { v4 as uuid } from "uuid";
 import { decodeBytes, normalizeLabel } from "@/core/encoding";
 import { parseSrt } from "@/core/parsers/srt";
 import { parseAss } from "@/core/parsers/ass";
+import { looksAlreadyBilingual } from "@/core/bilingual";
 import { useAppStore } from "@/store";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -12,6 +13,7 @@ const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 /** 集中处理「字节 → 探测编码 → 解析 → 入 store」，供上传区与顶部「打开新文件」复用。 */
 export function useSubtitleLoader() {
   const setDocument = useAppStore((s) => s.setDocument);
+  const setBilingualWarning = useAppStore((s) => s.setBilingualWarning);
   const [error, setError] = useState<string | null>(null);
   const [lowConfidence, setLowConfidence] = useState(false);
   const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
@@ -26,11 +28,12 @@ export function useSubtitleLoader() {
         const parse = /\.ass$/i.test(name) ? parseAss : parseSrt;
         const { document, issues } = parse(decoded.text, uuid());
         setDocument(document, name, decoded.encoding, issues);
+        setBilingualWarning(looksAlreadyBilingual(document));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     },
-    [setDocument],
+    [setDocument, setBilingualWarning],
   );
 
   const loadFile = useCallback(

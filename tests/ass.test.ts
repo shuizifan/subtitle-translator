@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAss, extractAssText } from "@/core/parsers/ass";
 import { serializeAss } from "@/core/serializers/ass";
+import { looksAlreadyBilingual } from "@/core/bilingual";
 import { assTimecodeToMs, msToAssTimecode } from "@/core/time";
 import { hexToAssColor, pctToAssFs, DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
 
@@ -95,14 +96,28 @@ describe("ASS serializer", () => {
     expect(line).toContain("\\NHello {\\i1}world{\\i0}"); // 原文行内标签原位还原
   });
 
-  it("字号：译文大、原文小，按 PlayResY 折算 {\\fs}", () => {
+  it("默认（保留模式）：不加 {\\fs}、不注入、源样式照旧", () => {
+    const { document } = parseAss(SAMPLE, "task-ass");
+    document.entries[1].translatedText = "第二行";
+    const out = serializeAss(
+      document,
+      { layout: "stacked", order: "translation-first", collapseLines: true },
+      undefined,
+      DEFAULT_ASS_STYLE, // forceStyle 默认 false
+    );
+    const line = out.split("\r\n").find((l) => l.includes("第二行"))!;
+    expect(line).not.toContain("\\fs");
+    expect(document.entries[0].tags).toBeTruthy(); // 源标签仍在
+  });
+
+  it("强制统一：译文大、原文小，按 PlayResY 折算 {\\fs}", () => {
     const { document } = parseAss(SAMPLE, "task-ass"); // SAMPLE PlayResY=1080
     document.entries[1].translatedText = "第二行";
     const out = serializeAss(
       document,
       { layout: "stacked", order: "translation-first", collapseLines: true },
       undefined,
-      DEFAULT_ASS_STYLE, // 译文 5.5% / 原文 4.2% → 59 / 45
+      { ...DEFAULT_ASS_STYLE, forceStyle: true }, // 译文 5.5% / 原文 4.2% → 59 / 45
     );
     const line = out.split("\r\n").find((l) => l.includes("第二行"))!;
     expect(line).toContain(`{\\fs${pctToAssFs(5.5, 1080)}}第二行`);
@@ -110,39 +125,108 @@ describe("ASS serializer", () => {
     expect(pctToAssFs(5.5, 1080)).toBeGreaterThan(pctToAssFs(4.2, 1080)); // 译文 > 原文
   });
 
+  it("强制统一：剥离源对白的装饰标签（如 {\\i1}），让我方字号真正生效", () => {
+    const { document } = parseAss(SAMPLE, "task-ass");
+    document.entries[0].translatedText = "你好世界";
+    const out = serializeAss(
+      document,
+      { layout: "stacked", order: "translation-first", collapseLines: true },
+      undefined,
+      { ...DEFAULT_ASS_STYLE, forceStyle: true },
+    );
+    const line = out.split("\r\n").find((l) => l.includes("你好世界"))!;
+    expect(line).not.toContain("{\\i1}"); // 源装饰标签被剥离
+    expect(line).toContain(`{\\fs${pctToAssFs(4.2, 1080)}}Hello world`); // 我方字号生效
+  });
+
   it("字号随 PlayResY 等比缩放（720p 比 1080p 小）", () => {
     expect(pctToAssFs(5.5, 720)).toBeLessThan(pctToAssFs(5.5, 1080));
     expect(pctToAssFs(5.5, 720)).toBe(40);
   });
 
-  it("缺 PlayRes 且启用字号时注入 1920×1080", () => {
+  it("缺 PlayRes：折算基准为 288；强制样式时注入 384×288（非 1080）", () => {
+    const noRes = SAMPLE.replace("PlayResX: 1920\r\n", "").replace("PlayResY: 1080\r\n", "");
+    const { document } = parseAss(noRes, "task-ass");
+    expect((document.meta.ass as { playResY: number }).playResY).toBe(288);
+    const out = serializeAss(document, { layout: "translated-only", order: "translation-first", collapseLines: false }, undefined, { ...DEFAULT_ASS_STYLE, forceStyle: true });
+    expect(out).toContain("PlayResX: 384");
+    expect(out).toContain("PlayResY: 288");
+    expect(out).not.toContain("PlayResY: 1080");
+  });
+
+  it("保留模式缺 PlayRes 时不注入、不改文件结构", () => {
     const noRes = SAMPLE.replace("PlayResX: 1920\r\n", "").replace("PlayResY: 1080\r\n", "");
     const { document } = parseAss(noRes, "task-ass");
     const out = serializeAss(document, { layout: "translated-only", order: "translation-first", collapseLines: false }, undefined, DEFAULT_ASS_STYLE);
-    expect(out).toContain("PlayResX: 1920");
-    expect(out).toContain("PlayResY: 1080");
+    expect(out).not.toContain("PlayResX");
+    expect(out).toBe(noRes); // 无译文 + 保留 → 原样
   });
 
-  it("关闭字号覆盖时不注入、不加 {\\fs}", () => {
-    const { document } = parseAss(SAMPLE, "task-ass");
-    document.entries[1].translatedText = "第二行";
-    const out = serializeAss(
-      document,
-      { layout: "stacked", order: "translation-first", collapseLines: true },
-      undefined,
-      { ...DEFAULT_ASS_STYLE, resizeEnabled: false },
-    );
-    const line = out.split("\r\n").find((l) => l.includes("第二行"))!;
-    expect(line).not.toContain("\\fs");
-  });
-
-  it("启用 SRT 颜色时译文/原文各加 {\\c} 覆盖标签", () => {
+  it("强制 + 启用 SRT 颜色：译文/原文各加主色覆盖", () => {
     const { document } = parseAss(SAMPLE, "task-ass");
     document.entries[0].translatedText = "你好世界";
     const style = { ...DEFAULT_STYLE, enableSrtColor: true, original: { primaryColor: "#FFCC00" }, translation: { primaryColor: "#FFFFFF" } };
-    const out = serializeAss(document, { layout: "stacked", order: "translation-first", collapseLines: true }, style);
+    const out = serializeAss(document, { layout: "stacked", order: "translation-first", collapseLines: true }, style, { ...DEFAULT_ASS_STYLE, forceStyle: true });
     const line = out.split("\r\n").find((l) => l.includes("你好世界"))!;
-    expect(line).toContain("{\\c&HFFFFFF&}你好世界");
-    expect(line).toContain("{\\c&H00CCFF&}Hello");
+    expect(line).toContain("\\c&HFFFFFF&"); // 译文白
+    expect(line).toContain("\\c&H00CCFF&"); // 原文金黄（BGR）
+  });
+
+  it("保留模式 + 启用 SRT 颜色：不加颜色（忠实源样式）", () => {
+    const { document } = parseAss(SAMPLE, "task-ass");
+    document.entries[0].translatedText = "你好世界";
+    const style = { ...DEFAULT_STYLE, enableSrtColor: true, translation: { primaryColor: "#FFFFFF" } };
+    const out = serializeAss(document, { layout: "stacked", order: "translation-first", collapseLines: true }, style, DEFAULT_ASS_STYLE);
+    const line = out.split("\r\n").find((l) => l.includes("你好世界"))!;
+    expect(line).not.toContain("\\c&H");
+  });
+});
+
+// 回归：还原"YYeTs 双语 fansub"那次崩坏的结构（无 PlayRes、Default fs20、英文行内 {\fs14}）
+const YYETS = [
+  "[Script Info]",
+  "ScriptType: v4.00+",
+  "",
+  "[V4+ Styles]",
+  "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+  "Style: Default,方正黑体简体,20,&H00FFFFFF,&HF0000000,&H00000000,&H32000000,0,0,0,0,100,100,0,0.00,1,2,1,2,5,5,2,134",
+  "",
+  "[Events]",
+  "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  "Dialogue: 0,0:00:53.13,0:00:59.38,Default,NTP,0000,0000,0000,,看看我们\\N{\\fn微软雅黑}{\\b0}{\\fs14}{\\3c&H202020&}{\\shad1}Look at us.",
+].join("\r\n");
+
+describe("YYeTs 双语 fansub 回归（默认保留模式不再崩坏）", () => {
+  it("默认导出不注入 PlayRes、不改字号、保留源内联 {\\fs14}", () => {
+    const { document } = parseAss(YYETS, "task-y");
+    const out = serializeAss(
+      document,
+      { layout: "translated-only", order: "translation-first", collapseLines: false },
+      undefined,
+      DEFAULT_ASS_STYLE, // 默认 forceStyle=false
+    );
+    expect(out).not.toContain("PlayResX"); // 不再注入 1080 → 不会整体缩小
+    expect(out).toContain("Fontsize"); // Styles 段原样保留
+    expect(out).toContain("Style: Default,方正黑体简体,20,"); // fs20 未被改动
+    expect(out).not.toContain("\\fs59"); // 未强加我方字号
+  });
+});
+
+describe("already-bilingual detection", () => {
+  it("中英堆叠的字幕被识别为已双语", () => {
+    const bi = [
+      "[Events]",
+      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,你好世界\\NHello world",
+      "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,再见朋友\\NGoodbye my friend",
+      "Dialogue: 0,0:00:05.00,0:00:06.00,Default,,0,0,0,,谢谢你\\NThank you very much",
+    ].join("\r\n");
+    const { document } = parseAss(bi, "task-bi");
+    expect(looksAlreadyBilingual(document)).toBe(true);
+  });
+
+  it("纯英文字幕不会被误判", () => {
+    const { document } = parseAss(SAMPLE, "task-ass");
+    expect(looksAlreadyBilingual(document)).toBe(false);
   });
 });

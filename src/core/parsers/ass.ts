@@ -151,7 +151,9 @@ export function parseAss(text: string, taskId: string): ParseAssResult {
   }
 
   const playResPresent = playResY != null;
-  const resolvedY = playResY ?? (playResX != null ? Math.round((playResX * 9) / 16) : 1080);
+  // 未声明 PlayRes 时，播放器（VSFilter/libass）默认按 384×288 渲染——
+  // 必须用 288 作折算基准，否则按 1080 会把原有样式缩到约 1/4（曾导致样式崩坏）。
+  const resolvedY = playResY ?? (playResX != null ? Math.round((playResX * 9) / 16) : 288);
   const meta: AssMeta = {
     eol,
     lines,

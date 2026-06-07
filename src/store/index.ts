@@ -78,6 +78,8 @@ interface AppState extends SettingsSnapshot {
   } | null;
   failedIds: number[];
   docVersion: number;
+  /** 上传时检测到「疑似已是双语」的提示（再翻译会覆盖已有译文）；可关闭。 */
+  bilingualWarning: boolean;
 
   // actions
   setDocument: (doc: SubtitleDocument, fileName: string, encoding: string, issues: ParseIssue[]) => void;
@@ -96,6 +98,7 @@ interface AppState extends SettingsSnapshot {
   setProgress: (p: AppState["progress"]) => void;
   setFailedIds: (ids: number[]) => void;
   bumpDocVersion: () => void;
+  setBilingualWarning: (v: boolean) => void;
 }
 
 export const DEFAULT_PARAMS: TranslateParams = {
@@ -137,6 +140,7 @@ export const useAppStore = create<AppState>()(
       progress: null,
       failedIds: [],
       docVersion: 0,
+      bilingualWarning: false,
 
       setDocument: (doc, fileName, encoding, issues) =>
         set((s) => ({
@@ -148,6 +152,7 @@ export const useAppStore = create<AppState>()(
           progress: null,
           failedIds: [],
           docVersion: s.docVersion + 1,
+          bilingualWarning: false,
         })),
 
       reset: () =>
@@ -187,6 +192,7 @@ export const useAppStore = create<AppState>()(
       setProgress: (p) => set({ progress: p }),
       setFailedIds: (ids) => set({ failedIds: ids }),
       bumpDocVersion: () => set((s) => ({ docVersion: s.docVersion + 1 })),
+      setBilingualWarning: (v) => set({ bilingualWarning: v }),
     }),
     {
       name: "subtitle-translator",

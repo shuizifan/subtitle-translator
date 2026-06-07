@@ -13,6 +13,8 @@ import { useUrlImport } from "@/lib/useUrlImport";
 
 export default function Home() {
   const hasDoc = useAppStore((s) => s.document != null);
+  const bilingualWarning = useAppStore((s) => s.bilingualWarning);
+  const setBilingualWarning = useAppStore((s) => s.setBilingualWarning);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const urlImport = useUrlImport();
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -31,6 +33,21 @@ export default function Home() {
               <button
                 className="shrink-0 text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-100"
                 onClick={() => setBannerDismissed(true)}
+                aria-label="关闭"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {bilingualWarning && (
+            <div className="flex items-center justify-between gap-3 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+              <span>
+                ⚠️ 这份字幕看起来<strong>已经是双语</strong>（中文 + 外文）。再翻译会把现有译文替换成新的 AI 译文——如只想换样式/字号，请直接导出，不必再翻译。
+              </span>
+              <button
+                className="shrink-0 text-amber-600 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100"
+                onClick={() => setBilingualWarning(false)}
                 aria-label="关闭"
               >
                 ✕

@@ -48,6 +48,31 @@ export function originalCues(doc: SubtitleDocument): OutputCue[] {
   }));
 }
 
+/** 判断一行主要是 CJK（中日韩）、拉丁字母，还是其它。 */
+function lineScript(line: string): "cjk" | "latin" | "other" {
+  const cjk = (line.match(/[一-鿿぀-ヿ가-힯]/g) || []).length;
+  const latin = (line.match(/[A-Za-z]/g) || []).length;
+  if (cjk >= 2 && cjk >= latin) return "cjk";
+  if (latin >= 2 && latin > cjk) return "latin";
+  return "other";
+}
+
+/**
+ * 粗判字幕是否「已经是双语」（每条对白含中/外两行堆叠）。
+ * 用于上传时提示，避免把排好版的双语字幕再翻译一遍、覆盖已有译文。
+ */
+export function looksAlreadyBilingual(doc: SubtitleDocument): boolean {
+  const sample = doc.entries.slice(0, 80);
+  if (sample.length === 0) return false;
+  let bi = 0;
+  for (const e of sample) {
+    const lines = e.originalText.split("\n").map((l) => l.trim()).filter(Boolean);
+    const scripts = new Set(lines.map(lineScript));
+    if (lines.length >= 2 && scripts.has("cjk") && scripts.has("latin")) bi++;
+  }
+  return bi / sample.length > 0.5;
+}
+
 /** 按双语选项组装输出 cue 列表。传入 style 时按 v1 范围套用 SRT 颜色。 */
 export function assemble(
   doc: SubtitleDocument,

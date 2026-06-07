@@ -418,15 +418,16 @@ function BilingualTab({
         </div>
       )}
 
-      {/* ASS 字号（仅 .ass 导出生效） */}
+      {/* ASS 样式（仅 .ass 导出生效） */}
       <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
         <label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
-          <input type="checkbox" checked={assStyle.resizeEnabled} onChange={(e) => setAssStyle({ resizeEnabled: e.target.checked })} />
-          ASS 字号：译文大、原文小
-          <Tooltip content={"仅对导出 .ass 生效。字号按「占视频画面高度的百分比」设置，ASS 渲染时随分辨率等比缩放，因此在手机/电脑上相对画面大小一致，不会过大或过小。\n\n若原文件未声明分辨率(PlayRes)，导出时会自动补 1920×1080 以保证各播放器一致。"} />
+          <input type="checkbox" checked={assStyle.forceStyle} onChange={(e) => setAssStyle({ forceStyle: e.target.checked })} />
+          强制统一 ASS 样式（译文大、原文小）
+          <Tooltip content={"默认关闭＝忠实保留源字幕原有的字体/字号/颜色，只翻译文字，绝不弄崩已排版好的字幕。\n\n开启后会剥离源对白的内联字体/字号/颜色，统一套用下面的「译文大、原文小」（适合无样式或想统一外观的字幕）。\n\n字号按「占视频高度的百分比」设置，随分辨率等比缩放，手机/电脑相对画面大小一致；源文件未声明分辨率时按播放器默认 384×288 处理。"} />
         </label>
+        <p className="mt-1 text-xs text-slate-400">默认保留源样式；仅当你想统一外观、或源字幕没样式时才需开启。</p>
 
-        {assStyle.resizeEnabled && (
+        {assStyle.forceStyle && (
           <div className="mt-3 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-slate-500 dark:text-slate-400">快捷档位</span>
