@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { useAppStore } from "@/store";
-import { useSubtitleLoader } from "@/lib/useSubtitleLoader";
+import { useSubtitleLoaderContext } from "@/lib/SubtitleLoaderContext";
 import { useExport } from "@/lib/useExport";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { siteConfig } from "@/config/site";
@@ -11,7 +11,7 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const phase = useAppStore((s) => s.phase);
   const progress = useAppStore((s) => s.progress);
   const hasDoc = useAppStore((s) => s.document != null);
-  const { loadFile } = useSubtitleLoader();
+  const { loadFile } = useSubtitleLoaderContext();
   const { exportTranslated, exportBilingual } = useExport();
   const fileInput = useRef<HTMLInputElement>(null);
 
