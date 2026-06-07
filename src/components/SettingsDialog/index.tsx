@@ -13,7 +13,7 @@ import {
 import { testConnection } from "@/core/translator/llmClient";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
 import { LANGUAGE_CODES, autoDescriptor } from "@/core/naming";
-import { COLOR_SCHEMES, type StyleConfig } from "@/core/styling";
+import { COLOR_SCHEMES, TRANSLATION_WHITE, type StyleConfig } from "@/core/styling";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 type Tab = "service" | "params" | "prompt" | "bilingual";
@@ -277,6 +277,35 @@ function BilingualTab({
     setStyle({ scheme: sc.name, enableSrtColor: sc.enableSrtColor, original: { ...sc.original }, translation: { ...sc.translation } });
   };
 
+  // 译文/原文颜色的兜底默认（与下方取色器一致）：译文白、原文金黄。
+  const ORIG_FALLBACK = "#D4A52A";
+
+  // 启用 SRT 颜色：若当前尚无分色，默认套用第一个分色方案（译文白 / 金黄原文）。
+  const toggleSrtColor = (checked: boolean) => {
+    if (!checked) {
+      setStyle({ enableSrtColor: false, scheme: COLOR_SCHEMES[0].name });
+      return;
+    }
+    const hasColor = !!(style.original.primaryColor || style.translation.primaryColor);
+    if (hasColor) {
+      setStyle({ enableSrtColor: true });
+    } else {
+      const def = COLOR_SCHEMES[1]; // 译文白 / 金黄原文
+      setStyle({ enableSrtColor: true, scheme: def.name, original: { ...def.original }, translation: { ...def.translation } });
+    }
+  };
+
+  // 一键调换原文 / 译文颜色。
+  const swapColors = () => {
+    const orig = style.original.primaryColor ?? ORIG_FALLBACK;
+    const trans = style.translation.primaryColor ?? TRANSLATION_WHITE;
+    setStyle({
+      original: { ...style.original, primaryColor: trans },
+      translation: { ...style.translation, primaryColor: orig },
+      scheme: "自定义",
+    });
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -350,17 +379,29 @@ function BilingualTab({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-slate-400">以译文（中文）为主色调；颜色需播放器支持 &lt;font color&gt; 才生效，默认不分色。</p>
+        <p className="mt-1 text-xs text-slate-400">译文恒为白色、原文用彩色区分；颜色需播放器支持 &lt;font color&gt; 才生效，默认不分色。</p>
       </div>
 
       <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-        <input type="checkbox" checked={style.enableSrtColor} onChange={(e) => setStyle({ enableSrtColor: e.target.checked, scheme: e.target.checked ? style.scheme : COLOR_SCHEMES[0].name })} />
+        <input type="checkbox" checked={style.enableSrtColor} onChange={(e) => toggleSrtColor(e.target.checked)} />
         启用 SRT 颜色（&lt;font color&gt;）
       </label>
       {style.enableSrtColor && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Color label="原文颜色" value={style.original.primaryColor ?? "#9AA0A6"} onChange={(c) => setStyle({ original: { ...style.original, primaryColor: c }, scheme: "自定义" })} />
-          <Color label="译文颜色" value={style.translation.primaryColor ?? "#FFC94D"} onChange={(c) => setStyle({ translation: { ...style.translation, primaryColor: c }, scheme: "自定义" })} />
+        <div className="space-y-2">
+          <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto_1fr]">
+            <Color label="原文颜色" value={style.original.primaryColor ?? ORIG_FALLBACK} onChange={(c) => setStyle({ original: { ...style.original, primaryColor: c }, scheme: "自定义" })} />
+            <button
+              type="button"
+              onClick={swapColors}
+              title="调换原文 / 译文颜色"
+              aria-label="调换原文与译文颜色"
+              className="mb-1 flex h-9 w-9 items-center justify-center self-end rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              ⇄
+            </button>
+            <Color label="译文颜色" value={style.translation.primaryColor ?? TRANSLATION_WHITE} onChange={(c) => setStyle({ translation: { ...style.translation, primaryColor: c }, scheme: "自定义" })} />
+          </div>
+          <p className="text-xs text-slate-400">译文默认白色；点击 ⇄ 可一键调换原文 / 译文颜色。</p>
         </div>
       )}
     </div>
