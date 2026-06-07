@@ -23,9 +23,12 @@ export interface StyleConfig {
   translation: LanguageStyle;
 }
 
+/** 译文（观众主要阅读对象）固定为白色。 */
+export const TRANSLATION_WHITE = "#FFFFFF";
+
 /**
- * 配色方案（以中文/译文为主色调，原文用低调灰）。默认「不分色」。
- * 译文是观众主要阅读对象，故给亮/暖主色；原文压暗作参考。
+ * 配色方案：译文恒为白色，原文用金黄 / 墨绿等彩色作区分。默认「不分色」。
+ * 译文是观众主要阅读对象，保持纯白最清晰；原文压一层彩色作参考。
  */
 export const COLOR_SCHEMES: Array<{
   name: string;
@@ -40,34 +43,28 @@ export const COLOR_SCHEMES: Array<{
     translation: {},
   },
   {
-    name: "金黄译文 / 灰原文",
+    name: "译文白 / 金黄原文",
     enableSrtColor: true,
-    original: { primaryColor: "#8C9196" },
-    translation: { primaryColor: "#D4A52A" }, // 沉稳金黄，非亮金
+    original: { primaryColor: "#D4A52A" }, // 沉稳金黄，非亮金
+    translation: { primaryColor: TRANSLATION_WHITE },
   },
   {
-    name: "墨绿译文 / 灰原文",
+    name: "译文白 / 墨绿原文",
     enableSrtColor: true,
-    original: { primaryColor: "#8C9196" },
-    translation: { primaryColor: "#5FA877" }, // 柔和绿，偏沉
+    original: { primaryColor: "#5FA877" }, // 柔和绿，偏沉
+    translation: { primaryColor: TRANSLATION_WHITE },
   },
   {
-    name: "黛蓝译文 / 灰原文",
+    name: "译文白 / 黛蓝原文",
     enableSrtColor: true,
-    original: { primaryColor: "#8C9196" },
-    translation: { primaryColor: "#5A8CC0" }, // 沉稳蓝
+    original: { primaryColor: "#5A8CC0" }, // 沉稳蓝
+    translation: { primaryColor: TRANSLATION_WHITE },
   },
   {
-    name: "绛粉译文 / 灰原文",
+    name: "译文白 / 绛粉原文",
     enableSrtColor: true,
-    original: { primaryColor: "#9095A0" },
-    translation: { primaryColor: "#C77B9A" }, // 柔和绛粉
-  },
-  {
-    name: "米白译文 / 暗灰原文",
-    enableSrtColor: true,
-    original: { primaryColor: "#7E838A" },
-    translation: { primaryColor: "#EAE6DC" }, // 米白，不刺眼
+    original: { primaryColor: "#C77B9A" }, // 柔和绛粉
+    translation: { primaryColor: TRANSLATION_WHITE },
   },
 ];
 
