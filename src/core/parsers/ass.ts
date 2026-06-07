@@ -18,6 +18,12 @@ export interface AssMeta {
   textIdx: number;
   /** 原始行号（0-based）→ 可翻译条目 id。 */
   lineToEntry: Record<number, number>;
+  /** 脚本声明的画面高度（PlayResY），用于按比例折算字号；缺省回退 1080。 */
+  playResY: number;
+  /** 原文件是否已声明 PlayResX/Y（否则导出按比例字号时需注入，保证跨播放器一致）。 */
+  playResPresent: boolean;
+  /** [Script Info] 段头所在行（-1＝无该段），注入 PlayRes 时用。 */
+  scriptInfoLine: number;
 }
 
 export interface ParseAssResult {
@@ -90,6 +96,9 @@ export function parseAss(text: string, taskId: string): ParseAssResult {
   let startIdx = -1;
   let endIdx = -1;
   let id = 1;
+  let playResX: number | null = null;
+  let playResY: number | null = null;
+  let scriptInfoLine = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -97,6 +106,14 @@ export function parseAss(text: string, taskId: string): ParseAssResult {
     const header = /^\s*\[(.+?)\]\s*$/.exec(line);
     if (header) {
       section = header[1].trim().toLowerCase();
+      if (section === "script info") scriptInfoLine = i;
+      continue;
+    }
+    if (section === "script info") {
+      const rx = /^\s*PlayResX\s*:\s*(\d+)/i.exec(line);
+      if (rx) playResX = parseInt(rx[1], 10);
+      const ry = /^\s*PlayResY\s*:\s*(\d+)/i.exec(line);
+      if (ry) playResY = parseInt(ry[1], 10);
       continue;
     }
     if (section !== "events") continue;
@@ -133,7 +150,17 @@ export function parseAss(text: string, taskId: string): ParseAssResult {
     throw new Error("ASS 解析失败：未找到可翻译的对白行（Dialogue），请确认文件含 [Events] 段");
   }
 
-  const meta: AssMeta = { eol, lines, textIdx, lineToEntry };
+  const playResPresent = playResY != null;
+  const resolvedY = playResY ?? (playResX != null ? Math.round((playResX * 9) / 16) : 1080);
+  const meta: AssMeta = {
+    eol,
+    lines,
+    textIdx,
+    lineToEntry,
+    playResY: resolvedY,
+    playResPresent,
+    scriptInfoLine,
+  };
   return {
     document: { taskId, sourceFormat: "ass", entries, meta: { eol, ass: meta, parseIssues: issues } },
     issues,

@@ -13,7 +13,7 @@ import {
 import { testConnection } from "@/core/translator/llmClient";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
 import { LANGUAGE_CODES, autoDescriptor } from "@/core/naming";
-import { COLOR_SCHEMES, TRANSLATION_WHITE, type StyleConfig } from "@/core/styling";
+import { COLOR_SCHEMES, TRANSLATION_WHITE, type AssStyleConfig, type StyleConfig } from "@/core/styling";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 type Tab = "service" | "params" | "prompt" | "bilingual";
@@ -43,6 +43,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   const setParams = (p: Partial<TranslateParams>) => patch({ params: { ...draft.params, ...p } });
   const setBilingual = (p: Partial<BilingualParams>) => patch({ bilingual: { ...draft.bilingual, ...p } });
   const setStyle = (p: Partial<StyleConfig>) => patch({ style: { ...draft.style, ...p } });
+  const setAssStyle = (p: Partial<AssStyleConfig>) => patch({ assStyle: { ...draft.assStyle, ...p } });
 
   const save = () => {
     applySettings(draft);
@@ -88,7 +89,15 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
           {tab === "params" && <ParamsTab params={draft.params} setParams={setParams} />}
           {tab === "prompt" && <PromptTab params={draft.params} setParams={setParams} />}
           {tab === "bilingual" && (
-            <BilingualTab bilingual={draft.bilingual} setBilingual={setBilingual} style={draft.style} setStyle={setStyle} params={draft.params} />
+            <BilingualTab
+              bilingual={draft.bilingual}
+              setBilingual={setBilingual}
+              style={draft.style}
+              setStyle={setStyle}
+              assStyle={draft.assStyle}
+              setAssStyle={setAssStyle}
+              params={draft.params}
+            />
           )}
         </div>
 
@@ -263,12 +272,16 @@ function BilingualTab({
   setBilingual,
   style,
   setStyle,
+  assStyle,
+  setAssStyle,
   params,
 }: {
   bilingual: BilingualParams;
   setBilingual: (p: Partial<BilingualParams>) => void;
   style: StyleConfig;
   setStyle: (p: Partial<StyleConfig>) => void;
+  assStyle: AssStyleConfig;
+  setAssStyle: (p: Partial<AssStyleConfig>) => void;
   params: TranslateParams;
 }) {
   const applyScheme = (name: string) => {
@@ -404,6 +417,88 @@ function BilingualTab({
           <p className="text-xs text-slate-400">译文默认白色；点击 ⇄ 可一键调换原文 / 译文颜色。</p>
         </div>
       )}
+
+      {/* ASS 字号（仅 .ass 导出生效） */}
+      <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
+          <input type="checkbox" checked={assStyle.resizeEnabled} onChange={(e) => setAssStyle({ resizeEnabled: e.target.checked })} />
+          ASS 字号：译文大、原文小
+          <Tooltip content={"仅对导出 .ass 生效。字号按「占视频画面高度的百分比」设置，ASS 渲染时随分辨率等比缩放，因此在手机/电脑上相对画面大小一致，不会过大或过小。\n\n若原文件未声明分辨率(PlayRes)，导出时会自动补 1920×1080 以保证各播放器一致。"} />
+        </label>
+
+        {assStyle.resizeEnabled && (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400">快捷档位</span>
+              {[
+                { label: "小", t: 4.5, o: 3.6 },
+                { label: "中", t: 5.5, o: 4.2 },
+                { label: "大", t: 6.5, o: 5.0 },
+              ].map((p) => {
+                const active = assStyle.translationPct === p.t && assStyle.originalPct === p.o;
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => setAssStyle({ translationPct: p.t, originalPct: p.o })}
+                    className={`rounded-md px-2.5 py-1 text-xs ${active ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"}`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <PctField
+                label="译文字号"
+                value={assStyle.translationPct}
+                onChange={(v) => setAssStyle({ translationPct: v })}
+              />
+              <PctField
+                label="原文字号"
+                value={assStyle.originalPct}
+                onChange={(v) => setAssStyle({ originalPct: v })}
+              />
+            </div>
+
+            <div>
+              <label className="label">统一字体（可选）</label>
+              <input
+                className="input"
+                value={assStyle.fontName}
+                placeholder="留空＝沿用原字幕字体"
+                onChange={(e) => setAssStyle({ fontName: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-slate-400">字体需播放端已安装，否则回退默认字体。</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 字号百分比输入（占视频高度），附 1080p 下的等效像素提示。 */
+function PctField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <label className="label">{label}（占视频高度 %）</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          className="input w-24"
+          min={1}
+          max={20}
+          step={0.1}
+          value={value}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            if (!Number.isNaN(v)) onChange(Math.min(20, Math.max(1, v)));
+          }}
+        />
+        <span className="text-xs text-slate-400">≈ 1080p 视频上 {Math.round((value / 100) * 1080)}px</span>
+      </div>
     </div>
   );
 }

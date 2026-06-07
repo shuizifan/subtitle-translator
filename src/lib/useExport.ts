@@ -35,6 +35,7 @@ export function useExport() {
         s.document,
         { layout, order: s.bilingual.order, collapseLines: s.bilingual.collapseLines },
         s.style,
+        s.assStyle,
       );
     } else {
       const layout: BilingualLayout =

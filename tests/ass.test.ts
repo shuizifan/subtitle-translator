@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseAss, extractAssText } from "@/core/parsers/ass";
 import { serializeAss } from "@/core/serializers/ass";
 import { assTimecodeToMs, msToAssTimecode } from "@/core/time";
-import { hexToAssColor } from "@/core/styling";
-import { DEFAULT_STYLE } from "@/core/styling";
+import { hexToAssColor, pctToAssFs, DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
 
 const SAMPLE = [
   "[Script Info]",
@@ -94,6 +93,47 @@ describe("ASS serializer", () => {
     const out = serializeAss(document, { layout: "stacked", order: "translation-first", collapseLines: true });
     const line = out.split("\r\n").find((l) => l.includes("你好世界"))!;
     expect(line).toContain("\\NHello {\\i1}world{\\i0}"); // 原文行内标签原位还原
+  });
+
+  it("字号：译文大、原文小，按 PlayResY 折算 {\\fs}", () => {
+    const { document } = parseAss(SAMPLE, "task-ass"); // SAMPLE PlayResY=1080
+    document.entries[1].translatedText = "第二行";
+    const out = serializeAss(
+      document,
+      { layout: "stacked", order: "translation-first", collapseLines: true },
+      undefined,
+      DEFAULT_ASS_STYLE, // 译文 5.5% / 原文 4.2% → 59 / 45
+    );
+    const line = out.split("\r\n").find((l) => l.includes("第二行"))!;
+    expect(line).toContain(`{\\fs${pctToAssFs(5.5, 1080)}}第二行`);
+    expect(line).toContain(`{\\fs${pctToAssFs(4.2, 1080)}}Second line`);
+    expect(pctToAssFs(5.5, 1080)).toBeGreaterThan(pctToAssFs(4.2, 1080)); // 译文 > 原文
+  });
+
+  it("字号随 PlayResY 等比缩放（720p 比 1080p 小）", () => {
+    expect(pctToAssFs(5.5, 720)).toBeLessThan(pctToAssFs(5.5, 1080));
+    expect(pctToAssFs(5.5, 720)).toBe(40);
+  });
+
+  it("缺 PlayRes 且启用字号时注入 1920×1080", () => {
+    const noRes = SAMPLE.replace("PlayResX: 1920\r\n", "").replace("PlayResY: 1080\r\n", "");
+    const { document } = parseAss(noRes, "task-ass");
+    const out = serializeAss(document, { layout: "translated-only", order: "translation-first", collapseLines: false }, undefined, DEFAULT_ASS_STYLE);
+    expect(out).toContain("PlayResX: 1920");
+    expect(out).toContain("PlayResY: 1080");
+  });
+
+  it("关闭字号覆盖时不注入、不加 {\\fs}", () => {
+    const { document } = parseAss(SAMPLE, "task-ass");
+    document.entries[1].translatedText = "第二行";
+    const out = serializeAss(
+      document,
+      { layout: "stacked", order: "translation-first", collapseLines: true },
+      undefined,
+      { ...DEFAULT_ASS_STYLE, resizeEnabled: false },
+    );
+    const line = out.split("\r\n").find((l) => l.includes("第二行"))!;
+    expect(line).not.toContain("\\fs");
   });
 
   it("启用 SRT 颜色时译文/原文各加 {\\c} 覆盖标签", () => {

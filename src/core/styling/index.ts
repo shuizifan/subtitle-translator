@@ -75,6 +75,35 @@ export const DEFAULT_STYLE: StyleConfig = {
   translation: {},
 };
 
+/**
+ * ASS 专用字号配置（SRT 无效）。
+ * 字号以「占视频画面高度的百分比」表示——ASS 渲染时按 PlayResY 比例缩放，
+ * 因此同一份文件在手机/电脑上相对画面大小一致，不会过大或过小。
+ * 译文（观众主读）略大、原文（参考）略小。
+ */
+export interface AssStyleConfig {
+  /** 是否覆盖对白字号（默认开，给出"译文大/原文小"的稳妥默认）。 */
+  resizeEnabled: boolean;
+  /** 译文字号占视频高度的百分比（如 5.5）。 */
+  translationPct: number;
+  /** 原文字号占视频高度的百分比（如 4.2）。 */
+  originalPct: number;
+  /** 统一字体名；空＝沿用原样式字体。 */
+  fontName: string;
+}
+
+export const DEFAULT_ASS_STYLE: AssStyleConfig = {
+  resizeEnabled: true,
+  translationPct: 5.5,
+  originalPct: 4.2,
+  fontName: "",
+};
+
+/** 百分比（占视频高度）→ ASS 字号像素（按脚本 PlayResY 折算）。 */
+export function pctToAssFs(pct: number, playResY: number): number {
+  return Math.max(1, Math.round((pct / 100) * playResY));
+}
+
 /** 给一行文本套上 SRT 颜色标签（仅当启用且提供颜色时）。 */
 export function applySrtColor(text: string, style: LanguageStyle, enable: boolean): string {
   if (!enable || !style.primaryColor) return text;
