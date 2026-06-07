@@ -21,3 +21,27 @@ export function msToSrtTimecode(totalMs: number): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
   return `${pad(h)}:${pad(m)}:${pad(s)},${pad(millis, 3)}`;
 }
+
+/** ASS 时间码 "H:MM:SS.cc"（cc 为厘秒，两位）→ 毫秒。 */
+export function assTimecodeToMs(tc: string): number {
+  const m = /^\s*(\d+):(\d{1,2}):(\d{1,2})[.:](\d{1,2})\s*$/.exec(tc);
+  if (!m) return 0;
+  const cs = (m[4] + "00").slice(0, 2); // 兼容 1~2 位厘秒
+  return (
+    parseInt(m[1], 10) * 3_600_000 +
+    parseInt(m[2], 10) * 60_000 +
+    parseInt(m[3], 10) * 1_000 +
+    parseInt(cs, 10) * 10
+  );
+}
+
+/** 毫秒 → ASS 时间码 "H:MM:SS.cc"。 */
+export function msToAssTimecode(totalMs: number): string {
+  const ms = Math.max(0, Math.round(totalMs));
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1_000);
+  const cs = Math.round((ms % 1_000) / 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${h}:${pad(m)}:${pad(s)}.${pad(cs)}`;
+}

@@ -80,3 +80,18 @@ export function applySrtColor(text: string, style: LanguageStyle, enable: boolea
   if (!enable || !style.primaryColor) return text;
   return `<font color="${style.primaryColor}">${text}</font>`;
 }
+
+/** "#RRGGBB" → ASS 颜色 "&HBBGGRR&"（BGR 倒序，覆盖标签 \c 用）。 */
+export function hexToAssColor(hex: string): string {
+  const h = hex.replace(/^#/, "").padEnd(6, "0").slice(0, 6);
+  const r = h.slice(0, 2);
+  const g = h.slice(2, 4);
+  const b = h.slice(4, 6);
+  return `&H${(b + g + r).toUpperCase()}&`;
+}
+
+/** 给一行 ASS 文本前置主色覆盖标签 {\c&H..&}（仅当启用且提供颜色时）。 */
+export function applyAssColor(text: string, style: LanguageStyle, enable: boolean): string {
+  if (!enable || !style.primaryColor) return text;
+  return `{\\c${hexToAssColor(style.primaryColor)}}${text}`;
+}

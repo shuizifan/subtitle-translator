@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { v4 as uuid } from "uuid";
 import { decodeBytes, normalizeLabel } from "@/core/encoding";
 import { parseSrt } from "@/core/parsers/srt";
+import { parseAss } from "@/core/parsers/ass";
 import { useAppStore } from "@/store";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -22,7 +23,8 @@ export function useSubtitleLoader() {
       try {
         const decoded = decodeBytes(bytes, forced && forced !== "auto" ? forced : undefined);
         setLowConfidence((!forced || forced === "auto") && decoded.confidence < 0.6);
-        const { document, issues } = parseSrt(decoded.text, uuid());
+        const parse = /\.ass$/i.test(name) ? parseAss : parseSrt;
+        const { document, issues } = parse(decoded.text, uuid());
         setDocument(document, name, decoded.encoding, issues);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -34,8 +36,8 @@ export function useSubtitleLoader() {
   const loadFile = useCallback(
     async (file: File) => {
       setError(null);
-      if (!/\.srt$/i.test(file.name)) {
-        setError("文件类型不支持，目前仅支持 .srt（后续将支持 .ass/.vtt/.lrc）");
+      if (!/\.(srt|ass)$/i.test(file.name)) {
+        setError("文件类型不支持，目前支持 .srt / .ass（后续将支持 .vtt/.lrc）");
         return;
       }
       if (file.size > MAX_SIZE) {
