@@ -11,17 +11,21 @@
 
 ## 功能特性
 
+- **多格式支持**：SRT 与 ASS/SSA 双格式，ASS 无损保留原有样式
 - **多服务商支持**：兼容 OpenAI、DeepSeek、Moonshot、智谱、Ollama 等所有 OpenAI 兼容接口
 - **双语布局**：双轨（同时间轴）/ 单轨（同条双行）/ 仅译文，语言顺序可调
+- **双语配色**：译文白色、原文彩色，支持颜色一键调换
+- **ASS 字号编辑**：译文大、原文小，跨设备显示一致；可选保留源样式或强制统一
 - **行对齐保障**：带 ID 的结构化 JSON I/O + 条数校验 + 缺失项单独重试，杜绝时间轴错位
 - **编码自动探测**：支持 GBK、Big5、Shift-JIS、UTF-16 等非 UTF-8 字幕，置信度低时提示手动选择
 - **标签保护**：翻译前抽离 `<i>`、`<font>`、`{\an8}` 等格式标签，译完精准回填
 - **断点续传**：中断或失败后保留已完成译文，可从未完成处继续
+- **整页拖拽上传**：拖入文件即可上传，替换已有文件时弹窗确认
 - **媒体服务器命名**：导出文件名符合 Plex / Jellyfin / Emby 字幕语言识别规范
 - **链接分享配置**：通过 URL 参数一键导入 API 配置，方便分享给他人
 - **深浅主题**：跟随系统 / 浅色 / 深色三态切换，偏好持久化
 
-当前支持格式：**SRT**。
+当前支持格式：**SRT**、**ASS / SSA**。
 
 ## 技术栈
 
@@ -34,7 +38,7 @@
 | 并发控制 | p-limit |
 | 测试 | Vitest |
 
-架构：`上传 → Parser → SubtitleDocument（时间统一毫秒）→ Translator → Serializer（双语 + 样式）→ 导出`
+架构：`上传 → Parser（SRT / ASS）→ SubtitleDocument（时间统一毫秒）→ Translator → Serializer（双语 + 样式）→ 导出`
 
 `src/core/` 为纯逻辑层，不依赖 React / 浏览器，可直接用 Vitest 覆盖测试。
 
@@ -45,7 +49,7 @@
 ```bash
 npm install
 npm run dev       # 开发服务器 http://localhost:3000
-npm test          # 运行单测（解析往返、行对齐、编码、命名等）
+npm test          # 运行单测（SRT/ASS 解析往返、行对齐、编码、命名等）
 npm run build     # 生产构建
 ```
 
