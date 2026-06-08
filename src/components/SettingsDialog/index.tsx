@@ -13,7 +13,7 @@ import {
 import { testConnection } from "@/core/translator/llmClient";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
 import { LANGUAGE_CODES, autoDescriptor } from "@/core/naming";
-import { COLOR_SCHEMES, TRANSLATION_WHITE, type AssStyleConfig, type StyleConfig } from "@/core/styling";
+import { ASS_SIZE_PRESETS, COLOR_SCHEMES, TRANSLATION_WHITE, type AssStyleConfig, type StyleConfig } from "@/core/styling";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 type Tab = "service" | "params" | "prompt" | "bilingual";
@@ -431,17 +431,13 @@ function BilingualTab({
           <div className="mt-3 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-slate-500 dark:text-slate-400">快捷档位</span>
-              {[
-                { label: "小", t: 4.5, o: 3.6 },
-                { label: "中", t: 5.5, o: 4.2 },
-                { label: "大", t: 6.5, o: 5.0 },
-              ].map((p) => {
-                const active = assStyle.translationPct === p.t && assStyle.originalPct === p.o;
+              {ASS_SIZE_PRESETS.map((p) => {
+                const active = assStyle.translationPct === p.translationPct && assStyle.originalPct === p.originalPct;
                 return (
                   <button
                     key={p.label}
                     type="button"
-                    onClick={() => setAssStyle({ translationPct: p.t, originalPct: p.o })}
+                    onClick={() => setAssStyle({ translationPct: p.translationPct, originalPct: p.originalPct })}
                     className={`rounded-md px-2.5 py-1 text-xs ${active ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"}`}
                   >
                     {p.label}

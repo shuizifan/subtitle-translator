@@ -18,10 +18,12 @@ export interface AssMeta {
   textIdx: number;
   /** 原始行号（0-based）→ 可翻译条目 id。 */
   lineToEntry: Record<number, number>;
-  /** 脚本声明的画面高度（PlayResY），用于按比例折算字号；缺省回退 1080。 */
+  /** 画面宽/高（解析得到或按 16:9 推导；两者皆缺则 384×288，与播放器默认一致）。 */
+  playResX: number;
   playResY: number;
-  /** 原文件是否已声明 PlayResX/Y（否则导出按比例字号时需注入，保证跨播放器一致）。 */
-  playResPresent: boolean;
+  /** 原文件是否已分别声明 PlayResX / PlayResY（注入时只补缺失的一个，避免重复冲突）。 */
+  playResXPresent: boolean;
+  playResYPresent: boolean;
   /** [Script Info] 段头所在行（-1＝无该段），注入 PlayRes 时用。 */
   scriptInfoLine: number;
 }
@@ -150,17 +152,30 @@ export function parseAss(text: string, taskId: string): ParseAssResult {
     throw new Error("ASS 解析失败：未找到可翻译的对白行（Dialogue），请确认文件含 [Events] 段");
   }
 
-  const playResPresent = playResY != null;
+  const playResXPresent = playResX != null;
+  const playResYPresent = playResY != null;
   // 未声明 PlayRes 时，播放器（VSFilter/libass）默认按 384×288 渲染——
   // 必须用 288 作折算基准，否则按 1080 会把原有样式缩到约 1/4（曾导致样式崩坏）。
-  const resolvedY = playResY ?? (playResX != null ? Math.round((playResX * 9) / 16) : 288);
+  // 只声明其一时，按 16:9 推导另一维，避免画布比例错乱。
+  let rx = playResX;
+  let ry = playResY;
+  if (rx == null && ry == null) {
+    rx = 384;
+    ry = 288;
+  } else if (ry == null) {
+    ry = Math.round((rx as number) * 9 / 16);
+  } else if (rx == null) {
+    rx = Math.round((ry as number) * 16 / 9);
+  }
   const meta: AssMeta = {
     eol,
     lines,
     textIdx,
     lineToEntry,
-    playResY: resolvedY,
-    playResPresent,
+    playResX: rx as number,
+    playResY: ry as number,
+    playResXPresent,
+    playResYPresent,
     scriptInfoLine,
   };
   return {

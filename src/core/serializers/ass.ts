@@ -38,6 +38,21 @@ function isStructuralTag(raw: string): boolean {
   return /\\(an?\d|pos\s*\(|move\s*\(|org\s*\(|i?clip|fad|fade|t\s*\(|p\d|k[fo]?\d|q\d)/i.test(raw);
 }
 
+/**
+ * 强制统一样式时，按「单个标签」剥离装饰类、仅保留结构类——
+ * 处理 {\an8\fs30\1c&H..&} 这类「结构+装饰混在一个块」的常见写法，避免整块漏过装饰标签。
+ * 返回精简后的块；若无结构类标签则返回 null（整块删除）。
+ */
+function stripDecorativeTags(raw: string): string | null {
+  if (!raw.startsWith("{") || !raw.endsWith("}")) return raw;
+  const inner = raw.slice(1, -1);
+  // \t(...) / \clip(...) 参数里可能含反斜杠或逗号，按 \ 拆分会拆错——整块保留。
+  if (/\\(t|i?clip)\s*\(/i.test(inner)) return raw;
+  const parts = inner.split(/(?=\\)/).filter((p) => p !== "");
+  const kept = parts.filter((p) => isStructuralTag(p));
+  return kept.length ? `{${kept.join("")}}` : null;
+}
+
 /** 组装一个 ASS 覆盖块前缀 {\fn..\fs..\c..}（按需，无内容则返回空串）。 */
 function inlinePrefix(fontName: string | undefined, fs: number | null, colorHex: string | undefined): string {
   let body = "";
@@ -58,8 +73,16 @@ function buildEntryText(
   const collapseOn = opts.collapseLines !== false;
   const force = assStyle?.forceStyle ?? false;
 
-  // 强制统一样式时，剥离源对白的「装饰类」内联标签（仅保留结构类），让我方样式真正生效。
-  const tagsFor = (tags?: InlineTag[]) => (force ? tags?.filter((t) => isStructuralTag(t.raw)) : tags);
+  // 强制统一样式时，逐个标签剥离源对白的「装饰类」（保留结构类），让我方样式真正生效。
+  const tagsFor = (tags?: InlineTag[]): InlineTag[] | undefined => {
+    if (!force || !tags) return tags;
+    const out: InlineTag[] = [];
+    for (const t of tags) {
+      const r = stripDecorativeTags(t.raw);
+      if (r) out.push({ raw: r, offset: t.offset });
+    }
+    return out;
+  };
   const prep = (t: string) => (collapseOn ? collapse(t) : t);
   const render = (text: string, tags?: InlineTag[]) => prep(reinsertTags(text, tagsFor(tags)));
 
@@ -111,9 +134,14 @@ export function serializeAss(
   if (!meta) throw new Error("serializeAss：缺少 meta.ass（请用 parseAss 解析）");
 
   const byId = new Map(doc.entries.map((e) => [e.id, e]));
-  // 仅在强制统一样式且源文件未声明 PlayRes 时注入 384×288（播放器默认画布），
+  // 强制统一样式时，把缺失的 PlayRes 维度补齐（只补缺的那一维，避免与已有声明重复冲突），
   // 保证我方 {\fs} 与原有样式在同一基准上渲染、跨播放器一致；保留模式下不改文件结构。
-  const inject = !!assStyle?.forceStyle && !meta.playResPresent;
+  const injectLines: string[] = [];
+  if (assStyle?.forceStyle) {
+    if (!meta.playResXPresent) injectLines.push(`PlayResX: ${meta.playResX}`);
+    if (!meta.playResYPresent) injectLines.push(`PlayResY: ${meta.playResY}`);
+  }
+  const inject = injectLines.length > 0;
 
   const out: string[] = [];
   for (let i = 0; i < meta.lines.length; i++) {
@@ -126,11 +154,11 @@ export function serializeAss(
       out.push(line);
     }
     if (inject && i === meta.scriptInfoLine) {
-      out.push("PlayResX: 384", "PlayResY: 288");
+      out.push(...injectLines);
     }
   }
   if (inject && meta.scriptInfoLine < 0) {
-    out.unshift("[Script Info]", "PlayResX: 384", "PlayResY: 288", "");
+    out.unshift("[Script Info]", ...injectLines, "");
   }
 
   return out.join(meta.eol);

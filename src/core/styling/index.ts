@@ -94,10 +94,17 @@ export interface AssStyleConfig {
 
 export const DEFAULT_ASS_STYLE: AssStyleConfig = {
   forceStyle: false,
-  translationPct: 5.5,
-  originalPct: 4.2,
+  translationPct: 6.5, // 中档：译文 6.5% / 原文 5%
+  originalPct: 5.0,
   fontName: "",
 };
+
+/** ASS 字号快捷档位（占视频高度百分比）。 */
+export const ASS_SIZE_PRESETS = [
+  { label: "小", translationPct: 6.0, originalPct: 4.8 },
+  { label: "中", translationPct: 6.5, originalPct: 5.0 },
+  { label: "大", translationPct: 7.0, originalPct: 5.2 },
+] as const;
 
 /** 百分比（占视频高度）→ ASS 字号像素（按脚本 PlayResY 折算）。 */
 export function pctToAssFs(pct: number, playResY: number): number {
@@ -110,9 +117,11 @@ export function applySrtColor(text: string, style: LanguageStyle, enable: boolea
   return `<font color="${style.primaryColor}">${text}</font>`;
 }
 
-/** "#RRGGBB" → ASS 颜色 "&HBBGGRR&"（BGR 倒序，覆盖标签 \c 用）。 */
+/** "#RRGGBB"（或 3 位简写 "#RGB"）→ ASS 颜色 "&HBBGGRR&"（BGR 倒序，覆盖标签 \c 用）。 */
 export function hexToAssColor(hex: string): string {
-  const h = hex.replace(/^#/, "").padEnd(6, "0").slice(0, 6);
+  let h = hex.replace(/[^0-9a-fA-F]/g, "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join(""); // #FFF → FFFFFF
+  h = (h + "000000").slice(0, 6);
   const r = h.slice(0, 2);
   const g = h.slice(2, 4);
   const b = h.slice(4, 6);

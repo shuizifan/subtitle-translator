@@ -37,11 +37,13 @@ export function assTimecodeToMs(tc: string): number {
 
 /** 毫秒 → ASS 时间码 "H:MM:SS.cc"。 */
 export function msToAssTimecode(totalMs: number): string {
-  const ms = Math.max(0, Math.round(totalMs));
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  const s = Math.floor((ms % 60_000) / 1_000);
-  const cs = Math.round((ms % 1_000) / 10);
+  // 先四舍五入到厘秒再拆分，避免 cs=round(995/10)=100 这类溢出未进位
+  const totalCs = Math.max(0, Math.round(totalMs / 10));
+  const cs = totalCs % 100;
+  const totalS = Math.floor(totalCs / 100);
+  const s = totalS % 60;
+  const m = Math.floor(totalS / 60) % 60;
+  const h = Math.floor(totalS / 3600);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${h}:${pad(m)}:${pad(s)}.${pad(cs)}`;
 }

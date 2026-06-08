@@ -39,6 +39,18 @@ describe("ASS color", () => {
     expect(hexToAssColor("#FFCC00")).toBe("&H00CCFF&");
     expect(hexToAssColor("#FFFFFF")).toBe("&HFFFFFF&");
   });
+  it("3 位简写正确展开（#FFF→白，非橙）", () => {
+    expect(hexToAssColor("#FFF")).toBe("&HFFFFFF&");
+    expect(hexToAssColor("#F00")).toBe("&H0000FF&"); // 红 → BGR
+  });
+});
+
+describe("ASS time 进位", () => {
+  it("厘秒进位不溢出（995ms→1.00 而非 0.100）", () => {
+    expect(msToAssTimecode(995)).toBe("0:00:01.00");
+    expect(msToAssTimecode(1999)).toBe("0:00:02.00");
+    expect(msToAssTimecode(59_995)).toBe("0:01:00.00");
+  });
 });
 
 describe("extractAssText", () => {
@@ -120,9 +132,9 @@ describe("ASS serializer", () => {
       { ...DEFAULT_ASS_STYLE, forceStyle: true }, // 译文 5.5% / 原文 4.2% → 59 / 45
     );
     const line = out.split("\r\n").find((l) => l.includes("第二行"))!;
-    expect(line).toContain(`{\\fs${pctToAssFs(5.5, 1080)}}第二行`);
-    expect(line).toContain(`{\\fs${pctToAssFs(4.2, 1080)}}Second line`);
-    expect(pctToAssFs(5.5, 1080)).toBeGreaterThan(pctToAssFs(4.2, 1080)); // 译文 > 原文
+    expect(line).toContain(`{\\fs${pctToAssFs(DEFAULT_ASS_STYLE.translationPct, 1080)}}第二行`);
+    expect(line).toContain(`{\\fs${pctToAssFs(DEFAULT_ASS_STYLE.originalPct, 1080)}}Second line`);
+    expect(pctToAssFs(DEFAULT_ASS_STYLE.translationPct, 1080)).toBeGreaterThan(pctToAssFs(DEFAULT_ASS_STYLE.originalPct, 1080)); // 译文 > 原文
   });
 
   it("强制统一：剥离源对白的装饰标签（如 {\\i1}），让我方字号真正生效", () => {
@@ -136,7 +148,40 @@ describe("ASS serializer", () => {
     );
     const line = out.split("\r\n").find((l) => l.includes("你好世界"))!;
     expect(line).not.toContain("{\\i1}"); // 源装饰标签被剥离
-    expect(line).toContain(`{\\fs${pctToAssFs(4.2, 1080)}}Hello world`); // 我方字号生效
+    expect(line).toContain(`{\\fs${pctToAssFs(DEFAULT_ASS_STYLE.originalPct, 1080)}}Hello world`); // 我方字号生效
+  });
+
+  it("强制统一：混合块 {\\an8\\fs30\\c..} 只保留结构标签、剥离其中装饰标签", () => {
+    const src = [
+      "[Script Info]",
+      "PlayResX: 1920",
+      "PlayResY: 1080",
+      "[Events]",
+      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\an8\\fs30\\1c&HFF0000&}标题文字",
+    ].join("\r\n");
+    const { document } = parseAss(src, "t");
+    document.entries[0].translatedText = "Title";
+    const out = serializeAss(document, { layout: "translated-only", order: "translation-first", collapseLines: true }, undefined, { ...DEFAULT_ASS_STYLE, forceStyle: true });
+    const line = out.split("\r\n").find((l) => l.startsWith("Dialogue:"))!;
+    expect(line).toContain("\\an8"); // 结构（定位）保留
+    expect(line).not.toContain("\\fs30"); // 源装饰字号被剥离
+    expect(line).not.toContain("\\1c&HFF0000&"); // 源装饰颜色被剥离
+    expect(line).toContain(`\\fs${pctToAssFs(DEFAULT_ASS_STYLE.translationPct, 1080)}`); // 我方字号生效
+  });
+
+  it("只声明 PlayResX 时不注入重复 PlayResX，仅补 PlayResY", () => {
+    const src = [
+      "[Script Info]",
+      "PlayResX: 1920",
+      "[Events]",
+      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello",
+    ].join("\r\n");
+    const { document } = parseAss(src, "t");
+    const out = serializeAss(document, { layout: "translated-only", order: "translation-first", collapseLines: false }, undefined, { ...DEFAULT_ASS_STYLE, forceStyle: true });
+    expect(out.match(/PlayResX/g)!.length).toBe(1); // 不重复
+    expect(out).toContain("PlayResY: 1080"); // 按 16:9 从 1920 推导补齐
   });
 
   it("字号随 PlayResY 等比缩放（720p 比 1080p 小）", () => {

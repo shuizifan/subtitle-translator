@@ -164,6 +164,7 @@ export const useAppStore = create<AppState>()(
           phase: "idle",
           progress: null,
           failedIds: [],
+          bilingualWarning: false,
         }),
 
       updateTranslation: (id, text) =>
@@ -213,7 +214,8 @@ export const useAppStore = create<AppState>()(
           params: { ...current.params, ...(p.params ?? {}) },
           bilingual: { ...current.bilingual, ...(p.bilingual ?? {}) },
           style: { ...current.style, ...(p.style ?? {}) },
-          assStyle: { ...current.assStyle, ...(p.assStyle ?? {}) },
+          // 旧缓存的 assStyle 形态不同（resizeEnabled / 旧默认值），缺 forceStyle 则回退到新默认
+          assStyle: p.assStyle && "forceStyle" in p.assStyle ? { ...current.assStyle, ...p.assStyle } : current.assStyle,
           apiProfiles: p.apiProfiles ?? current.apiProfiles,
           activeProfileId: p.activeProfileId ?? current.activeProfileId,
         };
