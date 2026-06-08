@@ -74,11 +74,12 @@ export function codeOf(lang: string): string {
 /** 去掉扩展名与已有的语言/类型尾标，得到「基础名」。 */
 export function deriveBaseName(fileName: string): string {
   let name = fileName.replace(/\.(srt|ass|vtt|lrc)$/i, "");
-  // 反复剥离尾部的语言/类型标记段（最多 4 段）
-  const TAG = /\.(chs|cht|zho?|chi|zh(?:-[\w-]+)?|eng?|en|jpn?|kor?|ja|ko|sdh|forced|default|双语|机翻[一-龥]*|AI[一-龥a-zA-Z]*|[一-龥]{0,4}双语)$/i;
+  // 反复剥离尾部的语言/类型标记段（最多 4 段），含中英文标记（如 .英 .中 .简体 .双语）
+  const TAG = /\.(chs|cht|zho?|chi|zh(?:-[\w-]+)?|eng?|en|jpn?|kor?|ja|ko|sdh|forced|default|简体中文|繁体中文|简体|繁体|简中|繁中|中字|英字|中英|国语|粤语|双语|简|繁|中|英|日|韩|法|德|西|俄|粤|机翻[一-龥]*|AI[一-龥a-zA-Z]*|[一-龥]{0,4}双语)$/i;
   for (let i = 0; i < 4; i++) {
     const next = name.replace(TAG, "");
     if (next === name) break;
+    if (next.trim().length < 2) break; // 防止把过短的名字（疑似标题本身）剥光，如 "3.德" → "3"
     name = next;
   }
   return name || "subtitle";

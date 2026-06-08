@@ -7,8 +7,8 @@ import { v4 as uuid } from "uuid";
 import type { ParseIssue, SubtitleDocument } from "@/core/model";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
 import type { BilingualLayout, LanguageOrder } from "@/core/bilingual";
-import type { StyleConfig } from "@/core/styling";
-import { DEFAULT_STYLE } from "@/core/styling";
+import type { StyleConfig, AssStyleConfig } from "@/core/styling";
+import { DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
 
 /** 一个翻译服务配置（OpenAI 兼容）。支持多个、可切换。 */
 export interface ApiProfile {
@@ -57,6 +57,7 @@ export interface SettingsSnapshot {
   params: TranslateParams;
   bilingual: BilingualParams;
   style: StyleConfig;
+  assStyle: AssStyleConfig;
 }
 
 interface AppState extends SettingsSnapshot {
@@ -77,6 +78,8 @@ interface AppState extends SettingsSnapshot {
   } | null;
   failedIds: number[];
   docVersion: number;
+  /** 上传时检测到「疑似已是双语」的提示（再翻译会覆盖已有译文）；可关闭。 */
+  bilingualWarning: boolean;
 
   // actions
   setDocument: (doc: SubtitleDocument, fileName: string, encoding: string, issues: ParseIssue[]) => void;
@@ -95,6 +98,7 @@ interface AppState extends SettingsSnapshot {
   setProgress: (p: AppState["progress"]) => void;
   setFailedIds: (ids: number[]) => void;
   bumpDocVersion: () => void;
+  setBilingualWarning: (v: boolean) => void;
 }
 
 export const DEFAULT_PARAMS: TranslateParams = {
@@ -131,10 +135,12 @@ export const useAppStore = create<AppState>()(
       activeProfileId: null,
       params: DEFAULT_PARAMS,
       style: DEFAULT_STYLE,
+      assStyle: DEFAULT_ASS_STYLE,
       bilingual: DEFAULT_BILINGUAL,
       progress: null,
       failedIds: [],
       docVersion: 0,
+      bilingualWarning: false,
 
       setDocument: (doc, fileName, encoding, issues) =>
         set((s) => ({
@@ -146,6 +152,7 @@ export const useAppStore = create<AppState>()(
           progress: null,
           failedIds: [],
           docVersion: s.docVersion + 1,
+          bilingualWarning: false,
         })),
 
       reset: () =>
@@ -157,6 +164,7 @@ export const useAppStore = create<AppState>()(
           phase: "idle",
           progress: null,
           failedIds: [],
+          bilingualWarning: false,
         }),
 
       updateTranslation: (id, text) =>
@@ -178,12 +186,14 @@ export const useAppStore = create<AppState>()(
           params: snap.params,
           bilingual: snap.bilingual,
           style: snap.style,
+          assStyle: snap.assStyle,
         }),
 
       setPhase: (p) => set({ phase: p }),
       setProgress: (p) => set({ progress: p }),
       setFailedIds: (ids) => set({ failedIds: ids }),
       bumpDocVersion: () => set((s) => ({ docVersion: s.docVersion + 1 })),
+      setBilingualWarning: (v) => set({ bilingualWarning: v }),
     }),
     {
       name: "subtitle-translator",
@@ -192,6 +202,7 @@ export const useAppStore = create<AppState>()(
         activeProfileId: s.activeProfileId,
         params: s.params,
         style: s.style,
+        assStyle: s.assStyle,
         bilingual: s.bilingual,
       }),
       // 深合并：保证新增字段（systemPrompt / 标签 / 配色方案等）在老缓存上也能取到默认值
@@ -203,6 +214,8 @@ export const useAppStore = create<AppState>()(
           params: { ...current.params, ...(p.params ?? {}) },
           bilingual: { ...current.bilingual, ...(p.bilingual ?? {}) },
           style: { ...current.style, ...(p.style ?? {}) },
+          // 旧缓存的 assStyle 形态不同（resizeEnabled / 旧默认值），缺 forceStyle 则回退到新默认
+          assStyle: p.assStyle && "forceStyle" in p.assStyle ? { ...current.assStyle, ...p.assStyle } : current.assStyle,
           apiProfiles: p.apiProfiles ?? current.apiProfiles,
           activeProfileId: p.activeProfileId ?? current.activeProfileId,
         };
@@ -235,5 +248,6 @@ export function snapshotSettings(s: AppState): SettingsSnapshot {
     params: { ...s.params },
     bilingual: { ...s.bilingual },
     style: { ...s.style, original: { ...s.style.original }, translation: { ...s.style.translation } },
+    assStyle: { ...s.assStyle },
   };
 }

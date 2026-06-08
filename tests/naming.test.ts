@@ -7,6 +7,29 @@ describe("基础名提取", () => {
     expect(deriveBaseName("Show.S01E01.eng.srt")).toBe("Show.S01E01");
     expect(deriveBaseName("plain.srt")).toBe("plain");
   });
+
+  it("剥离中英文语言标记并保留空格（匹配视频名）", () => {
+    // .英 与 .en 两段语言尾标都应剥离，空格、括号、连字符保留
+    expect(deriveBaseName("换精计划 (2010) - 1080p.英.en.ass")).toBe("换精计划 (2010) - 1080p");
+    expect(deriveBaseName("片名.简体.ass")).toBe("片名");
+    expect(deriveBaseName("片名.中英.srt")).toBe("片名");
+    // 不误伤：1080p、(2010) 不是语言标记
+    expect(deriveBaseName("换精计划 (2010) - 1080p.ass")).toBe("换精计划 (2010) - 1080p");
+    // 防过度剥离：短名不被剥光
+    expect(deriveBaseName("3.德.srt")).toBe("3.德");
+  });
+
+  it("导出名保留原始空格（如浏览器把空格改成下划线，属浏览器行为）", () => {
+    expect(
+      buildExportName({
+        fileName: "换精计划 (2010) - 1080p.英.en.ass",
+        type: "bilingual",
+        sourceLang: "auto",
+        targetLang: "Simplified Chinese",
+        ext: "ass",
+      }),
+    ).toBe("换精计划 (2010) - 1080p.AI中文双语.chs.ass");
+  });
 });
 
 describe("导出文件名", () => {

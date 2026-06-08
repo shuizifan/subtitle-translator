@@ -49,7 +49,7 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
         <input
           ref={fileInput}
           type="file"
-          accept=".srt"
+          accept=".srt,.ass"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];

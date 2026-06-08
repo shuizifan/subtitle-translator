@@ -19,7 +19,7 @@ export function GlobalDropzone({ children }: { children: ReactNode }) {
   const [dropError, setDropError] = useState<string | null>(null);
 
   const validate = (file: File): string | null => {
-    if (!/\.srt$/i.test(file.name)) return "文件类型不支持，目前仅支持 .srt（后续将支持 .ass/.vtt/.lrc）";
+    if (!/\.(srt|ass)$/i.test(file.name)) return "文件类型不支持，目前支持 .srt / .ass（后续将支持 .vtt/.lrc）";
     if (file.size > MAX_SIZE) return `文件超过 ${MAX_SIZE / 1024 / 1024} MB 上限`;
     return null;
   };

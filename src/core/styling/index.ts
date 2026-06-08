@@ -75,8 +75,61 @@ export const DEFAULT_STYLE: StyleConfig = {
   translation: {},
 };
 
+/**
+ * ASS 专用样式配置（SRT 无效）。
+ * 默认「忠实保留源字幕样式」——不动源文件的字体/字号/颜色，只翻译文字。
+ * 开启 forceStyle 后才用统一样式覆盖：剥离源对白的内联字体/字号/颜色标签，
+ * 套上「译文大、原文小」（字号以占视频高度百分比表达，按 PlayResY 折算，跨设备一致）。
+ */
+export interface AssStyleConfig {
+  /** 强制统一样式（覆盖源内联字体/字号/颜色）；默认 false＝忠实保留源样式。 */
+  forceStyle: boolean;
+  /** 译文字号占视频高度的百分比（如 5.5）。 */
+  translationPct: number;
+  /** 原文字号占视频高度的百分比（如 4.2）。 */
+  originalPct: number;
+  /** 统一字体名；空＝沿用原样式字体。 */
+  fontName: string;
+}
+
+export const DEFAULT_ASS_STYLE: AssStyleConfig = {
+  forceStyle: false,
+  translationPct: 6.5, // 中档：译文 6.5% / 原文 5%
+  originalPct: 5.0,
+  fontName: "",
+};
+
+/** ASS 字号快捷档位（占视频高度百分比）。 */
+export const ASS_SIZE_PRESETS = [
+  { label: "小", translationPct: 6.0, originalPct: 4.8 },
+  { label: "中", translationPct: 6.5, originalPct: 5.0 },
+  { label: "大", translationPct: 7.0, originalPct: 5.2 },
+] as const;
+
+/** 百分比（占视频高度）→ ASS 字号像素（按脚本 PlayResY 折算）。 */
+export function pctToAssFs(pct: number, playResY: number): number {
+  return Math.max(1, Math.round((pct / 100) * playResY));
+}
+
 /** 给一行文本套上 SRT 颜色标签（仅当启用且提供颜色时）。 */
 export function applySrtColor(text: string, style: LanguageStyle, enable: boolean): string {
   if (!enable || !style.primaryColor) return text;
   return `<font color="${style.primaryColor}">${text}</font>`;
+}
+
+/** "#RRGGBB"（或 3 位简写 "#RGB"）→ ASS 颜色 "&HBBGGRR&"（BGR 倒序，覆盖标签 \c 用）。 */
+export function hexToAssColor(hex: string): string {
+  let h = hex.replace(/[^0-9a-fA-F]/g, "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join(""); // #FFF → FFFFFF
+  h = (h + "000000").slice(0, 6);
+  const r = h.slice(0, 2);
+  const g = h.slice(2, 4);
+  const b = h.slice(4, 6);
+  return `&H${(b + g + r).toUpperCase()}&`;
+}
+
+/** 给一行 ASS 文本前置主色覆盖标签 {\c&H..&}（仅当启用且提供颜色时）。 */
+export function applyAssColor(text: string, style: LanguageStyle, enable: boolean): string {
+  if (!enable || !style.primaryColor) return text;
+  return `{\\c${hexToAssColor(style.primaryColor)}}${text}`;
 }

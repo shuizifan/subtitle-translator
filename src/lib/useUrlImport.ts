@@ -40,6 +40,7 @@ export function useUrlImport(): UrlImportResult | null {
       params: state.params,
       bilingual: state.bilingual,
       style: state.style,
+      assStyle: state.assStyle,
     });
 
     // 清除 URL 参数，防止 API Key 残留在浏览器历史
