@@ -42,6 +42,20 @@ describe("parseTranslationResponse", () => {
     const m = parseTranslationResponse('{"1":"一","2":"二"}');
     expect(m.get(1)).toBe("一");
   });
+
+  it("输出被 max_tokens 截断：救回已写完的条目，而不是整批丢弃", () => {
+    // 数组没有闭合的 ]，最后一个对象也只写了一半
+    const truncated = '[{"id":1,"text":"一"},{"id":2,"text":"二"},{"id":3,"text":"三';
+    const m = parseTranslationResponse(truncated);
+    expect(m.get(1)).toBe("一");
+    expect(m.get(2)).toBe("二");
+    expect(m.has(3)).toBe(false);
+  });
+
+  it("字符串里有裸换行（模型没转义 \\n）也能解析", () => {
+    const m = parseTranslationResponse('[{"id":1,"text":"上一行\n下一行"}]');
+    expect(m.get(1)).toBe("上一行\n下一行");
+  });
 });
 
 describe("翻译引擎", () => {
@@ -115,6 +129,35 @@ describe("翻译引擎", () => {
     await translateDocument(doc, caller, { ...baseOpts, batchSize: 10 });
     expect(seen.sort()).toEqual([3, 4]); // 只请求未翻译的
     expect(doc.entries[0].translatedText).toBe("已译1");
+  });
+
+  it("整批截断失败后，重试会缩小批量而不是原样重发", async () => {
+    const doc = makeDoc(8);
+    const sizes: number[] = [];
+    const caller: LlmCaller = async (messages) => {
+      const batch = JSON.parse(messages[1].content.split("\n").pop()!) as { id: number }[];
+      sizes.push(batch.length);
+      // 模拟 max_tokens 截断：一次要 8 条就被砍断，条数少了才写得完
+      if (batch.length > 4) return '[{"id":1,"text":"一"},{"id":2,"text":"二';
+      return JSON.stringify(batch.map((b) => ({ id: b.id, text: `T${b.id}` })));
+    };
+    const res = await translateDocument(doc, caller, { ...baseOpts, batchSize: 8, concurrency: 1 });
+    expect(sizes[0]).toBe(8);
+    expect(Math.max(...sizes.slice(1))).toBeLessThan(8); // 重试确实缩批了
+    expect(res.failedIds).toEqual([]);
+    expect(doc.entries[7].translatedText).toBe("T8");
+  });
+
+  it("鉴权类 4xx 不重试，直接判失败", async () => {
+    const doc = makeDoc(2);
+    let calls = 0;
+    const caller: LlmCaller = async () => {
+      calls++;
+      throw new LlmError("invalid api key", 401);
+    };
+    const res = await translateDocument(doc, caller, { ...baseOpts, batchSize: 2 });
+    expect(calls).toBe(1);
+    expect(res.failedIds).toEqual([1, 2]);
   });
 
   it("跳过空文本条目", async () => {

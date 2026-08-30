@@ -153,7 +153,13 @@ function ServiceTab({
 
   const test = async (p: ApiProfile) => {
     setResults((r) => ({ ...r, [p.id]: "loading" }));
-    const res = await testConnection({ baseURL: p.baseURL, apiKey: p.apiKey, model: p.model });
+    // 用当前的思考设置去测，才能测出用户实际翻译时的行为
+    const res = await testConnection({
+      baseURL: p.baseURL,
+      apiKey: p.apiKey,
+      model: p.model,
+      reasoningEffort: draft.params.reasoningEffort,
+    });
     setResults((r) => ({ ...r, [p.id]: res }));
   };
 
@@ -242,7 +248,25 @@ function ParamsTab({ params, setParams }: { params: TranslateParams; setParams: 
         <Num label="并发请求数" hint="同时进行的请求数。提高可加快整体速度，但受模型供应商限流约束。" value={params.concurrency} min={1} max={20} onChange={(v) => setParams({ concurrency: v })} />
         <Num label="最大重试次数" value={params.maxRetries} min={0} max={6} onChange={(v) => setParams({ maxRetries: v })} />
         <Num label="上下文参考条数" hint="额外携带前文几条作为参考（不翻译），提升连贯性；0 表示不带，速度更快。" value={params.contextLines} min={0} max={5} onChange={(v) => setParams({ contextLines: v })} />
-        <Num label="max tokens" value={params.maxTokens} min={256} max={32000} step={256} onChange={(v) => setParams({ maxTokens: v })} />
+        <Num label="max tokens" hint="单次请求的最大输出额度。思考型模型的思考 token 也占这个额度，给太小会让返回的 JSON 被截断、整批重试。建议不低于 8192。" value={params.maxTokens} min={256} max={32000} step={256} onChange={(v) => setParams({ maxTokens: v })} />
+        <div className="sm:col-span-2">
+          <label className="label flex items-center gap-1.5">
+            思考模式
+            <Tooltip content="字幕是逐条直译，模型的思考过程帮不上忙，却会消耗大量 token、占满 max tokens 额度并成倍拖慢速度。除非模型明确需要，否则保持「关闭」。不支持该参数的服务会自动忽略。" />
+          </label>
+          <select
+            className="input"
+            value={params.reasoningEffort}
+            onChange={(e) => setParams({ reasoningEffort: e.target.value as TranslateParams["reasoningEffort"] })}
+          >
+            <option value="none">关闭（推荐，字幕翻译最快）</option>
+            <option value="minimal">极简</option>
+            <option value="low">低</option>
+            <option value="medium">中</option>
+            <option value="high">高</option>
+            <option value="auto">跟随服务默认（不发送该参数）</option>
+          </select>
+        </div>
       </div>
       <div>
         <label className="label">自定义风格指令（追加，可选）</label>

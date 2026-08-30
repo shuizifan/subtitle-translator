@@ -6,6 +6,7 @@ import { persist } from "zustand/middleware";
 import { v4 as uuid } from "uuid";
 import type { ParseIssue, SubtitleDocument } from "@/core/model";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
+import type { ReasoningEffort } from "@/core/translator/llmClient";
 import type { BilingualLayout, LanguageOrder } from "@/core/bilingual";
 import type { StyleConfig, AssStyleConfig } from "@/core/styling";
 import { DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
@@ -33,6 +34,11 @@ export interface TranslateParams {
   /** 温度，默认 0 */
   temperature: number;
   maxTokens: number;
+  /**
+   * 思考强度。字幕是逐条直译，推理帮不上忙，但思考 token 会占满 max_tokens
+   * 导致 JSON 被截断、整批重试，所以默认关闭。"auto" = 不发送该字段。
+   */
+  reasoningEffort: ReasoningEffort;
 }
 
 export interface BilingualParams {
@@ -111,7 +117,10 @@ export const DEFAULT_PARAMS: TranslateParams = {
   maxRetries: 3,
   contextLines: 3,
   temperature: 0,
-  maxTokens: 4096,
+  // 8192 而非 4096：思考型模型的思考 token 也计入这个额度，4096 很容易被吃满，
+  // 导致返回的 JSON 数组被截断、整批判为失败并反复重试。
+  maxTokens: 8192,
+  reasoningEffort: "none",
 };
 
 export const DEFAULT_BILINGUAL: BilingualParams = {
@@ -197,6 +206,17 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "subtitle-translator",
+      version: 1,
+      // v0 → v1：旧缓存里 maxTokens 停留在 4096（老默认值），思考型模型光是思考
+      // 就能吃满，必须抬上来，否则老用户装了新版本依然会整批截断失败。
+      // 只动等于老默认值的情况，用户手工调过的数值保持不变。
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as Partial<AppState>;
+        if (version < 1 && p.params && p.params.maxTokens === 4096) {
+          p.params = { ...p.params, maxTokens: DEFAULT_PARAMS.maxTokens };
+        }
+        return p as AppState;
+      },
       partialize: (s) => ({
         apiProfiles: s.apiProfiles,
         activeProfileId: s.activeProfileId,

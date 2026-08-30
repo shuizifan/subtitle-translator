@@ -162,46 +162,57 @@ export async function translateDocument(
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       if (missing.length === 0) break;
 
-      try {
-        const messages = buildMessages(missing, options, context);
-        const content = await caller(messages, signal);
-        const map = parseTranslationResponse(content);
+      // 重试时逐轮折半缩批。原样重发同一个请求几乎必然重复失败：最常见的
+      // 失败原因是输出被 max_tokens 截断（思考型模型的思考 token 也占这个额度），
+      // 而缩小批量直接缩短了需要生成的 JSON，是唯一能真正改变结果的手段。
+      const chunkSize =
+        attempt === 0 ? missing.length : Math.max(1, Math.ceil(missing.length / 2 ** attempt));
 
-        const stillMissing: BatchItem[] = [];
-        for (const item of missing) {
-          const t = map.get(item.id);
-          if (typeof t === "string" && t.trim() !== "") {
-            const entry = byId.get(item.id);
-            if (entry) {
-              entry.translatedText = t;
-              translatedEntries++;
-              onEntry?.(entry);
+      const stillMissing: BatchItem[] = [];
+      let retriableError = false;
+      let fatalError = false;
+
+      for (const part of chunk(missing, chunkSize)) {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        try {
+          const messages = buildMessages(part, options, context);
+          const content = await caller(messages, signal);
+          const map = parseTranslationResponse(content);
+
+          for (const item of part) {
+            const t = map.get(item.id);
+            if (typeof t === "string" && t.trim() !== "") {
+              const entry = byId.get(item.id);
+              if (entry) {
+                entry.translatedText = t;
+                translatedEntries++;
+                onEntry?.(entry);
+              }
+            } else {
+              stillMissing.push(item);
             }
-          } else {
-            stillMissing.push(item);
           }
+          emitProgress();
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") throw err;
+          const status = err instanceof LlmError ? err.status : 0;
+          if (status === 429 || status >= 500 || status === 0) retriableError = true;
+          else fatalError = true;
+          stillMissing.push(...part);
         }
-        missing = stillMissing;
-        emitProgress();
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") throw err;
-        const status = err instanceof LlmError ? err.status : 0;
-        const retriable = status === 429 || status >= 500 || status === 0;
-        if (!retriable || attempt === options.maxRetries) {
-          // 不可重试或已用尽：本批剩余标记失败
-          break;
-        }
-        // 指数退避（429/5xx/网络），尊重供应商限流
-        const delay = Math.min(15_000, 500 * 2 ** attempt) + Math.random() * 300;
-        await sleep(delay, signal);
-        continue;
       }
 
-      if (missing.length > 0 && attempt < options.maxRetries) {
-        // 仍缺失：缩小批量重试更易对齐（这里逐条重试缺失项）
-        const delay = 300 * (attempt + 1);
-        await sleep(delay, signal);
-      }
+      missing = stillMissing;
+      if (missing.length === 0) break;
+      // 鉴权/参数错误（4xx，非 429）：重试没有意义，直接判失败
+      if (fatalError && !retriableError) break;
+      if (attempt === options.maxRetries) break;
+
+      const delay = retriableError
+        ? // 指数退避（429/5xx/网络），尊重供应商限流
+          Math.min(15_000, 500 * 2 ** attempt) + Math.random() * 300
+        : 300 * (attempt + 1);
+      await sleep(delay, signal);
     }
 
     for (const m of missing) failedIds.push(m.id);

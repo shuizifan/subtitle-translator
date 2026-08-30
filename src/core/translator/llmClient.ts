@@ -4,12 +4,20 @@
 
 import type { ChatMessage } from "@/core/translator/prompt";
 
+/**
+ * 思考强度。"auto" = 不发送该字段，完全交给供应商默认行为。
+ * 字幕逐条直译不需要推理，思考 token 既占 max_tokens 额度又拖慢速度，
+ * 所以默认关闭（见 store 的 DEFAULT_PARAMS）。
+ */
+export type ReasoningEffort = "auto" | "none" | "minimal" | "low" | "medium" | "high";
+
 export interface LlmConfig {
   baseURL: string;
   apiKey: string;
   model: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: ReasoningEffort;
 }
 
 /** 引擎依赖的调用接口；便于在测试中注入 mock。 */
@@ -37,6 +45,10 @@ export function createForwardingCaller(config: LlmConfig): LlmCaller {
         messages,
         temperature: config.temperature,
         max_tokens: config.maxTokens,
+        reasoning_effort:
+          config.reasoningEffort && config.reasoningEffort !== "auto"
+            ? config.reasoningEffort
+            : undefined,
       }),
       signal,
     });
@@ -70,10 +82,17 @@ export function createForwardingCaller(config: LlmConfig): LlmCaller {
 /** 测试连接（见规范 §9）：发一个极小请求校验端点/密钥/模型可用。 */
 export async function testConnection(config: LlmConfig): Promise<{ ok: boolean; message: string }> {
   try {
-    const caller = createForwardingCaller({ ...config, maxTokens: 5 });
+    // 额度不能太小：思考型模型的思考 token 也占 max_tokens，给 5 会被直接截断成空回复。
+    const caller = createForwardingCaller({ ...config, maxTokens: 64 });
     const reply = await caller([
       { role: "user", content: 'Reply with the single word: ok' },
     ]);
+    if (reply.trim() === "") {
+      return {
+        ok: false,
+        message: "端点可达，但模型返回了空内容（常见于思考型模型思考 token 占满额度）。请在「参数」里把「思考模式」设为「关闭」，或调高 max tokens。",
+      };
+    }
     return { ok: true, message: `连接成功，模型响应：${reply.slice(0, 60)}` };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
