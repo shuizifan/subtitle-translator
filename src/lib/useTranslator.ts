@@ -31,6 +31,7 @@ export function useTranslator() {
       model: profile.model,
       temperature: s.params.temperature,
       maxTokens: s.params.maxTokens,
+      reasoningEffort: s.params.reasoningEffort,
     });
 
     const opts: EngineOptions = {

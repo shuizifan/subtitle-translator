@@ -87,8 +87,81 @@ export function buildMessages(
 }
 
 /**
+ * 从一段可能不完整的文本里，逐个切出「顶层完整的 {...} 片段」。
+ * 用于抢救被 max_tokens 截断的 JSON 数组：数组虽然没有闭合的 ]，
+ * 但前面已经写完的对象仍然是有效数据，不该整批丢弃。
+ */
+function scanTopLevelObjects(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      if (depth > 0) depth--;
+      if (depth === 0 && start !== -1) {
+        out.push(s.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 把字符串字面量里的裸控制字符转义成合法 JSON。
+ * 提示词要求模型保留条目内的换行，模型经常直接输出真实换行符而非 \n，
+ * 这会让 JSON.parse 整个失败。
+ */
+function escapeRawControlChars(s: string): string {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (const ch of s) {
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        out += ch;
+        continue;
+      }
+      if (ch === "\\") {
+        esc = true;
+        out += ch;
+        continue;
+      }
+      if (ch === '"') {
+        inStr = false;
+        out += ch;
+        continue;
+      }
+      if (ch === "\n") out += "\\n";
+      else if (ch === "\r") out += "\\r";
+      else if (ch === "\t") out += "\\t";
+      else out += ch;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * 解析模型返回的内容为 id→译文 的 Map。
- * 容错：剥离 ```json 代码围栏、截取首个 [ 到末个 ]、兼容对象形式 {"1":"..."}。
+ * 容错：剥离 ```json 代码围栏、截取首个 [ 到末个 ]、兼容对象形式 {"1":"..."}，
+ * 并在整体解析失败时（输出被截断、字符串里有裸换行）逐个对象抢救已完成的条目。
  */
 export function parseTranslationResponse(content: string): Map<number, string> {
   const result = new Map<number, string>();
@@ -128,11 +201,33 @@ export function parseTranslationResponse(content: string): Map<number, string> {
   if (a !== -1 && b !== -1 && b > a) {
     if (tryArray(s.slice(a, b + 1))) return result;
   }
+  // 修掉字符串里的裸换行再整体试一次
+  const repaired = escapeRawControlChars(s);
+  if (repaired !== s) {
+    if (tryArray(repaired)) return result;
+    const ra = repaired.indexOf("[");
+    const rb = repaired.lastIndexOf("]");
+    if (ra !== -1 && rb > ra && tryArray(repaired.slice(ra, rb + 1))) return result;
+  }
+
   // 截取对象片段再试
   const oa = s.indexOf("{");
   const ob = s.lastIndexOf("}");
   if (oa !== -1 && ob !== -1 && ob > oa) {
     if (tryArray(s.slice(oa, ob + 1))) return result;
+  }
+
+  // 最后的抢救：输出被 max_tokens 截断时数组没有闭合，但已写完的对象仍然有效。
+  // 逐个提取，能救回多少算多少；剩下的交给引擎缩批重试。
+  for (const frag of scanTopLevelObjects(repaired)) {
+    try {
+      const item = JSON.parse(frag);
+      if (item && typeof item.id === "number" && typeof item.text === "string") {
+        result.set(item.id, item.text);
+      }
+    } catch {
+      /* 跳过这一段 */
+    }
   }
   return result;
 }

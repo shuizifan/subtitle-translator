@@ -6,6 +6,8 @@ import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// 一批字幕的生成可能要几十秒（尤其思考型模型），别让平台默认时限把请求砍成 504。
+export const maxDuration = 60;
 
 interface ForwardBody {
   baseURL?: string;
@@ -14,6 +16,7 @@ interface ForwardBody {
   messages?: unknown;
   temperature?: number;
   max_tokens?: number;
+  reasoning_effort?: string;
 }
 
 function json(data: unknown, status: number) {
@@ -38,7 +41,7 @@ export async function POST(req: NextRequest) {
     return json({ error: { message: "请求体不是合法 JSON" } }, 400);
   }
 
-  const { baseURL, apiKey, model, messages, temperature, max_tokens } = body;
+  const { baseURL, apiKey, model, messages, temperature, max_tokens, reasoning_effort } = body;
   if (!baseURL || !apiKey || !model || !messages) {
     return json(
       { error: { message: "缺少必要参数：baseURL / apiKey / model / messages" } },
@@ -50,16 +53,29 @@ export async function POST(req: NextRequest) {
   const payload: Record<string, unknown> = { model, messages, stream: false };
   if (typeof temperature === "number") payload.temperature = temperature;
   if (typeof max_tokens === "number") payload.max_tokens = max_tokens;
+  if (typeof reasoning_effort === "string" && reasoning_effort) {
+    payload.reasoning_effort = reasoning_effort;
+  }
 
-  try {
-    const upstream = await fetch(url, {
+  const send = (p: Record<string, unknown>) =>
+    fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(p),
     });
+
+  try {
+    let upstream = await send(payload);
+
+    // reasoning_effort 不是所有 OpenAI 兼容端点都认（有的直接 400）。
+    // 遇到 400 就摘掉这个字段重试一次，保证不会因为一个调优参数而彻底不可用。
+    if (upstream.status === 400 && "reasoning_effort" in payload) {
+      const { reasoning_effort: _dropped, ...withoutEffort } = payload;
+      upstream = await send(withoutEffort);
+    }
 
     const text = await upstream.text();
     // 原样回传上游状态码与响应体，前端按需解析
