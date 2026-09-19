@@ -82,7 +82,7 @@ export function QueuePanel() {
           {option("exportBilingual", "导出双语")}
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          队列按当前的翻译参数逐个处理，正在处理的文件会显示在下方表格里；ZIP 内保留原目录结构。
+          队列按当前的翻译参数逐个处理，正在处理的文件会<strong>依次替换</strong>主界面中显示的文件；ZIP 内保留原目录结构。
         </p>
 
         <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 text-xs dark:border-slate-700">

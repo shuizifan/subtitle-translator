@@ -164,9 +164,19 @@ function QaSection() {
   useAppStore((s) => s.docVersion);
   const { retranslate } = useTranslator();
 
+  const [hint, setHint] = useState<string | null>(null);
+
   const run = () => {
     const doc = useAppStore.getState().document;
-    if (doc) setQaFindings(inspectDocument(doc, targetLang));
+    if (!doc) return;
+    // 一条译文都没有时跑体检只会把整篇标成「未翻译」，没有意义
+    const translated = doc.entries.filter((e) => e.translatedText).length;
+    if (translated === 0) {
+      setHint("还没有任何译文，先翻译再来体检。");
+      return;
+    }
+    setHint(null);
+    setQaFindings(inspectDocument(doc, targetLang));
   };
 
   const counts = new Map<string, number>();
@@ -194,7 +204,8 @@ function QaSection() {
         )}
       </div>
 
-      {ran && findings.length === 0 && <p className="mt-3 text-emerald-600">没有发现可疑条目。</p>}
+      {hint && <p className="mt-3 text-amber-600">{hint}</p>}
+      {!hint && ran && findings.length === 0 && <p className="mt-3 text-emerald-600">没有发现可疑条目。</p>}
       {findings.length > 0 && (
         <>
           <ul className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">

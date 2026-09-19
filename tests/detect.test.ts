@@ -49,3 +49,10 @@ describe("源语言判定", () => {
     expect(detectLanguage([]).lang).toBe("auto");
   });
 });
+
+describe("短样本", () => {
+  it("只有几行也能判定", () => {
+    const r = detectLanguage(["Robert, are you coming?", "I told Robert to wait for us at the station."]);
+    expect(r.lang).toBe("English");
+  });
+});

@@ -36,6 +36,9 @@ export function useSubtitleLoader() {
   const loadBytes = useCallback(
     (bytes: Uint8Array, name: string, forced?: string) => {
       setError(null);
+      // 记住最近一次载入的字节：改编码重解析、改清理选项重解析都要用它
+      setLastBytes(bytes);
+      setLastName(name);
       try {
         const decoded = decodeBytes(bytes, forced && forced !== "auto" ? forced : undefined);
         setLowConfidence((!forced || forced === "auto") && decoded.confidence < 0.6);
@@ -76,10 +79,7 @@ export function useSubtitleLoader() {
         setError(`文件超过 ${MAX_SIZE / 1024 / 1024} MB 上限`);
         return;
       }
-      const buf = new Uint8Array(await file.arrayBuffer());
-      setLastBytes(buf);
-      setLastName(file.name);
-      loadBytes(buf, file.name, "auto");
+      loadBytes(new Uint8Array(await file.arrayBuffer()), file.name, "auto");
     },
     [loadBytes],
   );

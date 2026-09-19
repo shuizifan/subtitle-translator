@@ -40,8 +40,11 @@ export function useFileIntake() {
         })),
       );
       enqueueFiles(items);
-      // 顺手把第一个载入主界面，让用户能先确认解析/清理结果
-      await loadFile(usable[0]);
+      // 顺手把第一个载入主界面，让用户能先确认解析/清理结果；
+      // 但当前文件已经有译文时不能静默顶掉，交由用户点「开始批量翻译」再切换。
+      const cur = useAppStore.getState().document;
+      const hasWork = !!cur?.entries.some((e) => e.translatedText);
+      if (!hasWork) await loadFile(usable[0]);
       return { accepted: usable.length, skipped, queued: true };
     },
     [enqueueFiles, loadFile, MAX_SIZE],

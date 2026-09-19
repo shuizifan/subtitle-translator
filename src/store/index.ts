@@ -316,7 +316,7 @@ export const useAppStore = create<AppState>()(
             }
           }
           return {
-            cleanupMarks: id == null ? [] : s.cleanupMarks.filter((m) => m.id !== id || m.action !== "drop"),
+            cleanupMarks: s.cleanupMarks.filter((m) => m.action !== "drop" || (id != null && m.id !== id)),
             docVersion: s.docVersion + 1,
           };
         }),

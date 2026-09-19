@@ -121,12 +121,13 @@ export function useGlossaryBuilder() {
         signal: controller.signal,
       });
       useAppStore.getState().setGlossary(entries);
-      useAppStore
-        .getState()
-        .setGlossaryStatus(
-          "ready",
-          entries.length === 0 && candidates.length > 0 ? "模型没有认定任何专名，可手动添加" : null,
-        );
+      const note =
+        candidates.length === 0
+          ? "没有从这份字幕里抽到专名候选（候选靠首字母大写等线索，中日韩源语言通常抽不到），可手动添加。"
+          : entries.length === 0
+            ? "模型没有认定任何专名，可手动添加。"
+            : null;
+      useAppStore.getState().setGlossaryStatus("ready", note);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       useAppStore.getState().setGlossaryStatus("error", msg);

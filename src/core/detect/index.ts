@@ -76,8 +76,10 @@ export function detectLanguage(texts: string[]): DetectLanguageResult {
   }
 
   const coverage = best.score / words.length;
-  // 命中太少，或与第二名咬得太紧（如西/葡），不敢下结论
-  if (coverage < 0.02 || best.score < 5 || best.score < second * 1.3) {
+  // 命中太少，或与第二名咬得太紧（如西/葡），不敢下结论。
+  // 绝对命中数的门槛随样本大小放宽：几十行的短字幕本来就凑不够几个停用词。
+  const minScore = words.length >= 120 ? 5 : 2;
+  if (coverage < 0.02 || best.score < minScore || best.score < second * 1.3) {
     return { lang: "auto", confidence: coverage };
   }
   return { lang: best.lang, confidence: Math.min(1, coverage * 5) };
