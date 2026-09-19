@@ -113,24 +113,31 @@ export function useGlossaryBuilder() {
     const controller = new AbortController();
     abortRef.current = controller;
     s.setGlossaryStatus("building");
+    s.setGlossaryProgress({ phase: "scanning", done: 0, total: 0, candidates: 0, terms: 0 });
     try {
       const texts = doc.entries.filter((e) => !e.excluded).map((e) => e.originalText);
-      const { entries, candidates } = await buildGlossary(texts, caller, {
+      const { entries, candidates, failedChunks, lastError } = await buildGlossary(texts, caller, {
         sourceLang: s.params.sourceLang,
         targetLang: s.params.targetLang,
         signal: controller.signal,
+        onProgress: (p) => useAppStore.getState().setGlossaryProgress(p),
+        // 边生成边展示：长片分几批请求，不必等全部回来才看到结果
+        onPartial: (partial) => useAppStore.getState().setGlossary(partial),
       });
       useAppStore.getState().setGlossary(entries);
       const note =
         candidates.length === 0
           ? "没有从这份字幕里抽到专名候选（候选靠首字母大写等线索，中日韩源语言通常抽不到），可手动添加。"
-          : entries.length === 0
-            ? "模型没有认定任何专名，可手动添加。"
-            : null;
+          : failedChunks > 0
+            ? `有 ${failedChunks} 批请求失败，已保留其余结果。最后一次失败原因：${lastError ?? "未知"}`
+            : entries.length === 0
+              ? "模型没有认定任何专名，可手动添加。"
+              : null;
       useAppStore.getState().setGlossaryStatus("ready", note);
     } catch (e) {
+      const aborted = e instanceof DOMException && e.name === "AbortError";
       const msg = e instanceof Error ? e.message : String(e);
-      useAppStore.getState().setGlossaryStatus("error", msg);
+      useAppStore.getState().setGlossaryStatus(aborted ? "idle" : "error", aborted ? null : msg);
     } finally {
       abortRef.current = null;
     }

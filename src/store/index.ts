@@ -13,6 +13,7 @@ import { DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
 import type { CleanupMark, CleanupOptions } from "@/core/cleanup";
 import { DEFAULT_CLEANUP } from "@/core/cleanup";
 import type { GlossaryEntry } from "@/core/glossary";
+import type { GlossaryProgress } from "@/core/glossary/build";
 import type { QaFinding } from "@/core/qa";
 
 /** 一个翻译服务配置（OpenAI 兼容）。支持多个、可切换。 */
@@ -115,6 +116,8 @@ interface AppState extends SettingsSnapshot {
   glossary: GlossaryEntry[];
   glossaryStatus: "idle" | "building" | "ready" | "error";
   glossaryError: string | null;
+  /** 生成过程中的进度（扫描 / 第几批），null＝没有正在进行的生成 */
+  glossaryProgress: GlossaryProgress | null;
 
   /** 译文体检结果（导出前的机械校验；空数组=没跑过或全部通过） */
   qaFindings: QaFinding[];
@@ -156,6 +159,7 @@ interface AppState extends SettingsSnapshot {
 
   setGlossary: (entries: GlossaryEntry[]) => void;
   setGlossaryStatus: (status: AppState["glossaryStatus"], error?: string | null) => void;
+  setGlossaryProgress: (p: GlossaryProgress | null) => void;
   setQaFindings: (findings: QaFinding[]) => void;
 
   /** 快捷改单项参数（不走设置弹窗草稿） */
@@ -237,6 +241,7 @@ export const useAppStore = create<AppState>()(
       glossary: [],
       glossaryStatus: "idle",
       glossaryError: null,
+      glossaryProgress: null,
       qaFindings: [],
       qaRan: false,
       progress: null,
@@ -262,6 +267,7 @@ export const useAppStore = create<AppState>()(
           glossary: [],
           glossaryStatus: "idle",
           glossaryError: null,
+          glossaryProgress: null,
           qaFindings: [],
           qaRan: false,
           docVersion: s.docVersion + 1,
@@ -283,6 +289,7 @@ export const useAppStore = create<AppState>()(
           glossary: [],
           glossaryStatus: "idle",
           glossaryError: null,
+          glossaryProgress: null,
           qaFindings: [],
           qaRan: false,
           bilingualWarning: false,
@@ -322,7 +329,14 @@ export const useAppStore = create<AppState>()(
         }),
 
       setGlossary: (entries) => set({ glossary: entries }),
-      setGlossaryStatus: (status, error) => set({ glossaryStatus: status, glossaryError: error ?? null }),
+      setGlossaryStatus: (status, error) =>
+        set({
+          glossaryStatus: status,
+          glossaryError: error ?? null,
+          // 离开「生成中」时顺手清掉进度，避免残留一个不再前进的批次数
+          ...(status === "building" ? {} : { glossaryProgress: null }),
+        }),
+      setGlossaryProgress: (p) => set({ glossaryProgress: p }),
       setQaFindings: (findings) => set({ qaFindings: findings, qaRan: true }),
 
       setParams: (p) => set((s) => ({ params: { ...s.params, ...p } })),

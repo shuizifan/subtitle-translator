@@ -109,3 +109,84 @@ describe("术语表解析与注入", () => {
     expect(buildSystemPrompt({ sourceLang: "auto", targetLang: "Simplified Chinese" })).not.toContain("Glossary");
   });
 });
+
+describe("术语表生成过程", () => {
+  // 30 个各出现两次（且非句首）的专名 → chunkSize=10 时正好分 3 批
+  const NAMES = [
+    "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Juliet",
+    "Kilo", "Lima", "Mike", "November", "Oscar", "Papa", "Quebec", "Romeo", "Sierra", "Tango",
+    "Uniform", "Victor", "Whiskey", "Xray", "Yankee", "Zulu", "Orion", "Perseus", "Draco", "Vega",
+  ];
+  const texts = NAMES.flatMap((n) => [`I saw ${n} today.`, `We waited for ${n} again.`]);
+
+  it("回报进度并边生成边给出部分结果", async () => {
+    const { buildGlossary } = await import("@/core/glossary/build");
+    const progress: string[] = [];
+    const partials: number[] = [];
+    let call = 0;
+    const res = await buildGlossary(
+      texts,
+      async () => {
+        const i = call++;
+        return JSON.stringify([{ term: `T${i}`, translation: `译${i}` }]);
+      },
+      {
+        sourceLang: "English",
+        targetLang: "Simplified Chinese",
+        chunkSize: 10,
+        concurrency: 1,
+        onProgress: (p) => progress.push(`${p.phase}:${p.done}/${p.total}`),
+        onPartial: (e) => partials.push(e.length),
+      },
+    );
+    expect(progress[0]).toBe("scanning:0/0");
+    expect(progress.at(-1)).toMatch(/^requesting:\d+\/\d+$/);
+    // 每批结束都回报一次累积结果，且数量单调不减
+    expect(partials.length).toBeGreaterThan(1);
+    expect(partials).toEqual([...partials].sort((a, b) => a - b));
+    expect(res.entries.length).toBe(partials.at(-1));
+    expect(res.failedChunks).toBe(0);
+  });
+
+  it("单批失败不作废整张表", async () => {
+    const { buildGlossary } = await import("@/core/glossary/build");
+    let call = 0;
+    const res = await buildGlossary(
+      texts,
+      async () => {
+        if (call++ === 0) throw new Error("boom");
+        return '[{"term":"Robert","translation":"罗伯特"}]';
+      },
+      { sourceLang: "English", targetLang: "Simplified Chinese", chunkSize: 10, concurrency: 1 },
+    );
+    expect(res.failedChunks).toBe(1);
+    expect(res.lastError).toContain("boom");
+    expect(res.entries).toEqual([{ term: "Robert", translation: "罗伯特" }]);
+  });
+
+  it("全部批次失败时抛错", async () => {
+    const { buildGlossary } = await import("@/core/glossary/build");
+    await expect(
+      buildGlossary(texts, async () => { throw new Error("all down"); }, {
+        sourceLang: "English",
+        targetLang: "Simplified Chinese",
+        chunkSize: 10,
+        concurrency: 2,
+      }),
+    ).rejects.toThrow("all down");
+  });
+
+  it("取消会立刻中止", async () => {
+    const { buildGlossary } = await import("@/core/glossary/build");
+    const ac = new AbortController();
+    const p = buildGlossary(
+      texts,
+      async () => {
+        ac.abort();
+        return "[]";
+      },
+      { sourceLang: "English", targetLang: "Simplified Chinese", chunkSize: 5, concurrency: 1, signal: ac.signal },
+    );
+    await expect(p).rejects.toThrow(/Aborted/);
+  });
+});
