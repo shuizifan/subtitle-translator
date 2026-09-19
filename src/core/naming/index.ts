@@ -136,9 +136,11 @@ export interface ExportNameOptions {
 export function autoDescriptor(type: ExportType, sourceLang: string, targetLang: string): string {
   if (type === "translated") return `AI${nounOf(targetLang)}`; // AI中文
   const known = sourceLang && sourceLang !== "auto";
-  return known
-    ? `AI${charOf(targetLang)}${charOf(sourceLang)}双语` // AI中英双语
-    : `AI${nounOf(targetLang)}双语`; // 源语言未知：AI中文双语
+  // 源语言与目标语言同字（中文字幕译成中文）时别拼成「AI中中双语」
+  if (known && charOf(sourceLang) !== charOf(targetLang)) {
+    return `AI${charOf(targetLang)}${charOf(sourceLang)}双语`; // AI中英双语
+  }
+  return `AI${nounOf(targetLang)}双语`; // 源语言未知或同字：AI中文双语
 }
 
 export function buildExportName(o: ExportNameOptions): string {

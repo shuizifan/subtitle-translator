@@ -23,6 +23,9 @@ export function SubtitleTable() {
   const progress = useAppStore((s) => s.progress);
   const translateError = useAppStore((s) => s.translateError);
   const detectedLang = useAppStore((s) => s.detectedLang);
+  // 订阅这两份设置，改语言/标签后文件名预览才会跟着刷新
+  useAppStore((s) => s.params);
+  useAppStore((s) => s.bilingual);
   const { previewName } = useExport();
   useAppStore((s) => s.docVersion); // 翻译过程中增量刷新
 

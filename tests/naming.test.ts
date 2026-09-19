@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildExportName, deriveBaseName } from "@/core/naming";
+import { autoDescriptor, buildExportName, deriveBaseName } from "@/core/naming";
 
 describe("基础名提取", () => {
   it("去扩展名与已有语言尾标", () => {
@@ -76,5 +76,14 @@ describe("导出文件名", () => {
         langCode: "zh",
       }),
     ).toBe("Movie.AI中文.zh.srt");
+  });
+});
+
+describe("源语言与目标语言同字时的双语标签", () => {
+  it("中文字幕译成中文不拼成「AI中中双语」", () => {
+    expect(autoDescriptor("bilingual", "Chinese", "Simplified Chinese")).toBe("AI中文双语");
+  });
+  it("英文源仍是「AI中英双语」", () => {
+    expect(autoDescriptor("bilingual", "English", "Simplified Chinese")).toBe("AI中英双语");
   });
 });
