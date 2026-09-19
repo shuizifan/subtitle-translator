@@ -112,12 +112,15 @@ async function runOne(
     // 术语表：每部片子的人名各不相同，必须逐部生成
     if (opts.glossaryPerFile && s.params.useGlossary) {
       useAppStore.getState().setGlossaryStatus("building");
+      useAppStore.getState().setGlossaryProgress({ phase: "scanning", done: 0, total: 0, candidates: 0, terms: 0 });
       try {
         const texts = doc.entries.filter((e) => !e.excluded).map((e) => e.originalText);
         const { entries } = await buildGlossary(texts, caller, {
           sourceLang: useAppStore.getState().params.sourceLang,
           targetLang: s.params.targetLang,
           signal,
+          onProgress: (p) => useAppStore.getState().setGlossaryProgress(p),
+          onPartial: (partial) => useAppStore.getState().setGlossary(partial),
         });
         useAppStore.getState().setGlossary(entries);
         useAppStore.getState().setGlossaryStatus("ready");

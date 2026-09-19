@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/store";
 import { useGlossaryBuilder, useTranslator } from "@/lib/useTranslator";
 import { useSubtitleLoaderContext } from "@/lib/SubtitleLoaderContext";
@@ -17,6 +17,7 @@ export function QualityPanel() {
   const [open, setOpen] = useState<Section>(null);
   const glossary = useAppStore((s) => s.glossary);
   const glossaryStatus = useAppStore((s) => s.glossaryStatus);
+  const glossaryProgress = useAppStore((s) => s.glossaryProgress);
   const qaFindings = useAppStore((s) => s.qaFindings);
   const qaRan = useAppStore((s) => s.qaRan);
   const cleanupMarks = useAppStore((s) => s.cleanupMarks);
@@ -45,8 +46,18 @@ export function QualityPanel() {
         {chip(
           "glossary",
           "术语表",
-          glossaryStatus === "building" ? "生成中…" : glossary.length > 0 ? `${glossary.length} 条` : "未生成",
-          glossary.length > 0 ? "text-emerald-600" : "text-slate-400",
+          glossaryStatus === "building"
+            ? glossaryProgress && glossaryProgress.total > 0
+              ? `生成中 ${glossaryProgress.done}/${glossaryProgress.total} 批`
+              : "扫描中…"
+            : glossary.length > 0
+              ? `${glossary.length} 条`
+              : "未生成",
+          glossaryStatus === "building"
+            ? "animate-pulse text-blue-500"
+            : glossary.length > 0
+              ? "text-emerald-600"
+              : "text-slate-400",
         )}
         {chip(
           "qa",
@@ -78,15 +89,37 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** 生成用时（秒）——长片要几十秒，没有计时很难判断是在跑还是卡住。 */
+function useElapsed(running: boolean): number {
+  const [elapsed, setElapsed] = useState(0);
+  const startedAt = useRef(0);
+  useEffect(() => {
+    if (!running) return;
+    startedAt.current = Date.now();
+    setElapsed(0);
+    const t = setInterval(() => setElapsed(Math.round((Date.now() - startedAt.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+  return elapsed;
+}
+
+function Spinner() {
+  return (
+    <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600 align-[-2px] dark:border-slate-600 dark:border-t-slate-200" />
+  );
+}
+
 function GlossarySection() {
   const glossary = useAppStore((s) => s.glossary);
   const status = useAppStore((s) => s.glossaryStatus);
+  const progress = useAppStore((s) => s.glossaryProgress);
   const error = useAppStore((s) => s.glossaryError);
   const setGlossary = useAppStore((s) => s.setGlossary);
   const useGlossary = useAppStore((s) => s.params.useGlossary);
   const setParams = useAppStore((s) => s.setParams);
   const phase = useAppStore((s) => s.phase);
   const { build, cancel } = useGlossaryBuilder();
+  const elapsed = useElapsed(status === "building");
 
   const update = (i: number, p: Partial<GlossaryEntry>) =>
     setGlossary(glossary.map((e, idx) => (idx === i ? { ...e, ...p } : e)));
@@ -121,7 +154,32 @@ function GlossarySection() {
         )}
       </div>
 
-      {status === "building" && <p className="mt-3 text-slate-500">正在扫描全片专名并请求模型…</p>}
+      {status === "building" && (
+        <div className="mt-3 space-y-2">
+          <p className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+            <Spinner />
+            {progress && progress.phase === "requesting" && progress.total > 0 ? (
+              <span>
+                已抽出 <strong>{progress.candidates}</strong> 个专名候选，正在请求模型（第 {Math.min(progress.done + 1, progress.total)}/
+                {progress.total} 批）· 已确认 <strong>{progress.terms}</strong> 条 · 已用时 {elapsed}s
+              </span>
+            ) : (
+              <span>正在扫描全片专名…（已用时 {elapsed}s）</span>
+            )}
+          </p>
+          {progress && progress.total > 0 && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+              <div
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+              />
+            </div>
+          )}
+          <p className="text-xs text-slate-400">
+            思考模式开启时单批可能要十几秒；生成好的条目会随时出现在下方，不必等全部完成。
+          </p>
+        </div>
+      )}
       {error && <p className="mt-3 text-amber-600">{error}</p>}
 
       {glossary.length > 0 && (
