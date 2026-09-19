@@ -19,6 +19,17 @@ const LANG_NOUN: Record<string, string> = {
   French: "法文",
   Spanish: "西班牙文",
   Russian: "俄文",
+  Italian: "意大利文",
+  Portuguese: "葡萄牙文",
+  Dutch: "荷兰文",
+  Swedish: "瑞典文",
+  Polish: "波兰文",
+  Czech: "捷克文",
+  Turkish: "土耳其文",
+  Arabic: "阿拉伯文",
+  Greek: "希腊文",
+  Hebrew: "希伯来文",
+  Thai: "泰文",
 };
 
 /** 语言 → 单字（用于「双语」描述，如 中英）。 */
@@ -33,6 +44,17 @@ const LANG_CHAR: Record<string, string> = {
   French: "法",
   Spanish: "西",
   Russian: "俄",
+  Italian: "意",
+  Portuguese: "葡",
+  Dutch: "荷",
+  Swedish: "瑞",
+  Polish: "波",
+  Czech: "捷",
+  Turkish: "土",
+  Arabic: "阿",
+  Greek: "希",
+  Hebrew: "希",
+  Thai: "泰",
 };
 
 /** 目标语言 → 媒体服务器语言码（文件名尾缀，如 chs）。 */
@@ -47,6 +69,17 @@ const LANG_CODE: Record<string, string> = {
   French: "fre",
   Spanish: "spa",
   Russian: "rus",
+  Italian: "ita",
+  Portuguese: "por",
+  Dutch: "dut",
+  Swedish: "swe",
+  Polish: "pol",
+  Czech: "cze",
+  Turkish: "tur",
+  Arabic: "ara",
+  Greek: "gre",
+  Hebrew: "heb",
+  Thai: "tha",
 };
 
 /** 可手动选择的语言码选项（默认随目标语言推断，可覆盖）。 */

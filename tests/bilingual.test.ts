@@ -43,7 +43,8 @@ describe("双语组装", () => {
     };
     const cues = assemble(d, { layout: "dual-entry", order: "translation-first", collapseLines: true });
     expect(cues).toHaveLength(2);
-    expect(cues[0].text).toBe("第一行 第二行 第三行");
+    // 中文接缝不插空格（英文仍然插），见 core/text
+    expect(cues[0].text).toBe("第一行第二行第三行");
     expect(cues[1].text).toBe("line one line two line three");
   });
 

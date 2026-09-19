@@ -14,6 +14,7 @@ import type { AssMeta } from "@/core/parsers/ass";
 import { reinsertTags } from "@/core/tags";
 import { hexToAssColor, pctToAssFs, type AssStyleConfig, type LanguageStyle, type StyleConfig } from "@/core/styling";
 import type { LanguageOrder } from "@/core/bilingual";
+import { collapseLines as collapse } from "@/core/text";
 
 export type AssLayout = "translated-only" | "stacked";
 
@@ -22,15 +23,6 @@ export interface SerializeAssOptions {
   order: LanguageOrder;
   /** 合并每种语言内部换行为一行（默认 true），与 SRT 行为一致。 */
   collapseLines?: boolean;
-}
-
-/** 把多行压成一行（逐行去空白、丢空行、空格连接）。 */
-function collapse(text: string): string {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l !== "")
-    .join(" ");
 }
 
 /** 结构类标签（定位/对齐/动画/绘图/卡拉OK/淡入淡出/裁剪等）：强制统一样式时也要保留。 */
@@ -149,7 +141,11 @@ export function serializeAss(
     const eid = meta.lineToEntry[i];
     if (eid != null) {
       const entry = byId.get(eid);
-      out.push(entry ? replaceEventText(line, meta.textIdx, buildEntryText(entry, opts, meta.playResY, style, assStyle)) : line);
+      if (entry?.excluded) {
+        // 源字幕清理判定的非台词行（水印/占位符）：整行不输出
+      } else {
+        out.push(entry ? replaceEventText(line, meta.textIdx, buildEntryText(entry, opts, meta.playResY, style, assStyle)) : line);
+      }
     } else {
       out.push(line);
     }

@@ -2,6 +2,10 @@
 // 用带 ID 的结构化输入/输出强约束行对齐：每条字幕带稳定数字 ID，模型必须逐条对应、
 // 不得合并或拆分，输出严格为 JSON 数组。
 
+import { parseLooseObjectArray } from "@/core/translator/json";
+import type { GlossaryEntry } from "@/core/glossary";
+import { formatGlossary } from "@/core/glossary";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -23,6 +27,12 @@ export interface PromptOptions {
    * JSON-ID 输出协议以保证行对齐，故无论如何编辑都不会破坏对齐。
    */
   systemPrompt?: string;
+  /**
+   * 全片术语表（人名/地名等专名的统一译法）。批与批之间是独立请求，没有共享状态，
+   * 同一个人名很容易这批音译、那批保留原文；把术语表钉进 system prompt 是唯一能
+   * 跨批次强制一致的手段（见改进建议 #2）。
+   */
+  glossary?: GlossaryEntry[];
 }
 
 /**
@@ -49,6 +59,7 @@ const OUTPUT_CONTRACT = [
   'You will receive a JSON array like [{"id":1,"text":"..."}].',
   'Translate each item\'s "text" field. Output ONLY a JSON array like [{"id":1,"text":"<translation>"}],',
   "with the SAME ids, exactly one item per input id. Never merge or split items.",
+  "Each output item must correspond to its own input item: never move part of one line's meaning into a neighbouring line.",
   "Preserve \\n line breaks inside each text. No markdown, no code fences, no commentary.",
 ].join("\n");
 
@@ -58,16 +69,35 @@ export function buildSystemPrompt(opts: PromptOptions): string {
   if (opts.customStyle && opts.customStyle.trim()) {
     out += `\n\nAdditional user style: ${opts.customStyle.trim()}`;
   }
+  const glossary = formatGlossary(opts.glossary);
+  if (glossary) {
+    out +=
+      "\n\n## Glossary (MUST follow exactly):\n" +
+      "These renderings are fixed for the whole film. Use them for every occurrence, never an alternative\n" +
+      "transliteration, and never leave the original form when a rendering is given.\n" +
+      glossary;
+  }
   return out + "\n" + OUTPUT_CONTRACT;
 }
 
-export function buildUserPrompt(batch: BatchItem[], context?: BatchItem[]): string {
+export function buildUserPrompt(
+  batch: BatchItem[],
+  context?: BatchItem[],
+  trailingContext?: BatchItem[],
+): string {
   const parts: string[] = [];
   if (context && context.length > 0) {
     parts.push(
       "For continuity only (DO NOT translate or include these in your output) — preceding lines:",
     );
     parts.push(JSON.stringify(context));
+    parts.push("");
+  }
+  if (trailingContext && trailingContext.length > 0) {
+    parts.push(
+      "For continuity only (DO NOT translate or include these in your output) — following lines:",
+    );
+    parts.push(JSON.stringify(trailingContext));
     parts.push("");
   }
   parts.push("Translate the following entries and return the JSON array:");
@@ -79,154 +109,38 @@ export function buildMessages(
   batch: BatchItem[],
   opts: PromptOptions,
   context?: BatchItem[],
+  trailingContext?: BatchItem[],
 ): ChatMessage[] {
   return [
     { role: "system", content: buildSystemPrompt(opts) },
-    { role: "user", content: buildUserPrompt(batch, context) },
+    { role: "user", content: buildUserPrompt(batch, context, trailingContext) },
   ];
 }
 
 /**
- * 从一段可能不完整的文本里，逐个切出「顶层完整的 {...} 片段」。
- * 用于抢救被 max_tokens 截断的 JSON 数组：数组虽然没有闭合的 ]，
- * 但前面已经写完的对象仍然是有效数据，不该整批丢弃。
- */
-function scanTopLevelObjects(s: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let start = -1;
-  let inStr = false;
-  let esc = false;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (ch === "\\") esc = true;
-      else if (ch === '"') inStr = false;
-      continue;
-    }
-    if (ch === '"') inStr = true;
-    else if (ch === "{") {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === "}") {
-      if (depth > 0) depth--;
-      if (depth === 0 && start !== -1) {
-        out.push(s.slice(start, i + 1));
-        start = -1;
-      }
-    }
-  }
-  return out;
-}
-
-/**
- * 把字符串字面量里的裸控制字符转义成合法 JSON。
- * 提示词要求模型保留条目内的换行，模型经常直接输出真实换行符而非 \n，
- * 这会让 JSON.parse 整个失败。
- */
-function escapeRawControlChars(s: string): string {
-  let out = "";
-  let inStr = false;
-  let esc = false;
-  for (const ch of s) {
-    if (inStr) {
-      if (esc) {
-        esc = false;
-        out += ch;
-        continue;
-      }
-      if (ch === "\\") {
-        esc = true;
-        out += ch;
-        continue;
-      }
-      if (ch === '"') {
-        inStr = false;
-        out += ch;
-        continue;
-      }
-      if (ch === "\n") out += "\\n";
-      else if (ch === "\r") out += "\\r";
-      else if (ch === "\t") out += "\\t";
-      else out += ch;
-      continue;
-    }
-    if (ch === '"') inStr = true;
-    out += ch;
-  }
-  return out;
-}
-
-/**
  * 解析模型返回的内容为 id→译文 的 Map。
- * 容错：剥离 ```json 代码围栏、截取首个 [ 到末个 ]、兼容对象形式 {"1":"..."}，
- * 并在整体解析失败时（输出被截断、字符串里有裸换行）逐个对象抢救已完成的条目。
+ * 容错：剥离 ```json 代码围栏、截取首个 [ 到末个 ]、兼容对象形式 {"1":"..."}、
+ * id 被写成字符串，并在整体解析失败时（输出被截断、字符串里有裸换行）逐个对象抢救。
  */
 export function parseTranslationResponse(content: string): Map<number, string> {
   const result = new Map<number, string>();
-  let s = content.trim();
-  // 剥离代码围栏
-  s = s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-
-  const tryArray = (raw: string): boolean => {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          if (item && typeof item.id === "number" && typeof item.text === "string") {
-            result.set(item.id, item.text);
-          }
-        }
-        return result.size > 0;
-      }
-      if (parsed && typeof parsed === "object") {
-        for (const [k, v] of Object.entries(parsed)) {
-          const id = Number(k);
-          if (Number.isFinite(id) && typeof v === "string") result.set(id, v);
-        }
-        return result.size > 0;
-      }
-    } catch {
-      /* fallthrough */
+  for (const item of parseLooseObjectArray(content)) {
+    const rawId = item.id;
+    const id =
+      typeof rawId === "number"
+        ? rawId
+        : typeof rawId === "string" && rawId.trim() !== "" && Number.isFinite(Number(rawId))
+          ? Number(rawId)
+          : null;
+    if (id != null) {
+      const text = item.text;
+      if (typeof text === "string") result.set(id, text);
+      continue;
     }
-    return false;
-  };
-
-  if (tryArray(s)) return result;
-
-  // 截取数组片段再试
-  const a = s.indexOf("[");
-  const b = s.lastIndexOf("]");
-  if (a !== -1 && b !== -1 && b > a) {
-    if (tryArray(s.slice(a, b + 1))) return result;
-  }
-  // 修掉字符串里的裸换行再整体试一次
-  const repaired = escapeRawControlChars(s);
-  if (repaired !== s) {
-    if (tryArray(repaired)) return result;
-    const ra = repaired.indexOf("[");
-    const rb = repaired.lastIndexOf("]");
-    if (ra !== -1 && rb > ra && tryArray(repaired.slice(ra, rb + 1))) return result;
-  }
-
-  // 截取对象片段再试
-  const oa = s.indexOf("{");
-  const ob = s.lastIndexOf("}");
-  if (oa !== -1 && ob !== -1 && ob > oa) {
-    if (tryArray(s.slice(oa, ob + 1))) return result;
-  }
-
-  // 最后的抢救：输出被 max_tokens 截断时数组没有闭合，但已写完的对象仍然有效。
-  // 逐个提取，能救回多少算多少；剩下的交给引擎缩批重试。
-  for (const frag of scanTopLevelObjects(repaired)) {
-    try {
-      const item = JSON.parse(frag);
-      if (item && typeof item.id === "number" && typeof item.text === "string") {
-        result.set(item.id, item.text);
-      }
-    } catch {
-      /* 跳过这一段 */
+    // 对象映射形态：{"1":"译文","2":"译文"}
+    for (const [k, v] of Object.entries(item)) {
+      const n = Number(k);
+      if (Number.isFinite(n) && typeof v === "string") result.set(n, v);
     }
   }
   return result;
