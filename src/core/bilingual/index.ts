@@ -4,6 +4,7 @@
 import type { SubtitleDocument } from "@/core/model";
 import { reinsertTags } from "@/core/tags";
 import { applySrtColor, type StyleConfig } from "@/core/styling";
+import { collapseLines as collapse } from "@/core/text";
 
 export type BilingualLayout =
   | "dual-entry" // 布局一：双条目同时间轴（默认，匹配用户参考字幕）
@@ -23,15 +24,6 @@ export interface BilingualOptions {
   collapseLines?: boolean;
 }
 
-/** 把多行文本压成一行：逐行去空白、丢空行，用空格连接。 */
-function collapse(text: string): string {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l !== "")
-    .join(" ");
-}
-
 /** 序列化器消费的中间产物：一个时间轴 + 一段（可含换行的）文本。 */
 export interface OutputCue {
   start: number;
@@ -41,7 +33,7 @@ export interface OutputCue {
 
 /** 仅原文（用于解析—序列化往返一致性测试与「翻译前预览」）。 */
 export function originalCues(doc: SubtitleDocument): OutputCue[] {
-  return doc.entries.map((e) => ({
+  return doc.entries.filter((e) => !e.excluded).map((e) => ({
     start: e.start,
     end: e.end,
     text: reinsertTags(e.originalText, e.tags),
@@ -88,6 +80,8 @@ export function assemble(
     style ? applySrtColor(t, style.translation, style.enableSrtColor) : t;
 
   for (const e of doc.entries) {
+    // 源字幕清理判定的非台词条目（水印/占位符）不进导出
+    if (e.excluded) continue;
     const orig = colorOrig(prep(reinsertTags(e.originalText, e.tags)));
     const hasTrans = e.translatedText != null && e.translatedText !== "";
     const trans = hasTrans ? colorTrans(prep(reinsertTags(e.translatedText as string, e.tags))) : "";

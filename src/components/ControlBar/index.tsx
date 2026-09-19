@@ -12,6 +12,17 @@ const SOURCE_LANGS = [
   { value: "French", label: "法语" },
   { value: "Spanish", label: "西班牙语" },
   { value: "Russian", label: "俄语" },
+  { value: "Italian", label: "意大利语" },
+  { value: "Portuguese", label: "葡萄牙语" },
+  { value: "Dutch", label: "荷兰语" },
+  { value: "Swedish", label: "瑞典语" },
+  { value: "Polish", label: "波兰语" },
+  { value: "Czech", label: "捷克语" },
+  { value: "Turkish", label: "土耳其语" },
+  { value: "Arabic", label: "阿拉伯语" },
+  { value: "Greek", label: "希腊语" },
+  { value: "Hebrew", label: "希伯来语" },
+  { value: "Thai", label: "泰语" },
   { value: "Chinese", label: "中文" },
 ];
 
@@ -31,6 +42,7 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const setSourceLang = useAppStore((s) => s.setSourceLang);
   const setTargetLang = useAppStore((s) => s.setTargetLang);
   const phase = useAppStore((s) => s.phase);
+  const detectedLang = useAppStore((s) => s.detectedLang);
   const document = useAppStore((s) => s.document);
   useAppStore((s) => s.docVersion);
 
@@ -83,6 +95,11 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
             </option>
           ))}
         </select>
+        {detectedLang && detectedLang !== "auto" && detectedLang === params.sourceLang && (
+          <span className="text-xs text-emerald-600 dark:text-emerald-400" title="按字幕正文自动判定，可手动改">
+            自动判定
+          </span>
+        )}
       </div>
 
       {/* 目标语言 */}

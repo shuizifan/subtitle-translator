@@ -10,6 +10,10 @@ import type { ReasoningEffort } from "@/core/translator/llmClient";
 import type { BilingualLayout, LanguageOrder } from "@/core/bilingual";
 import type { StyleConfig, AssStyleConfig } from "@/core/styling";
 import { DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
+import type { CleanupMark, CleanupOptions } from "@/core/cleanup";
+import { DEFAULT_CLEANUP } from "@/core/cleanup";
+import type { GlossaryEntry } from "@/core/glossary";
+import type { QaFinding } from "@/core/qa";
 
 /** 一个翻译服务配置（OpenAI 兼容）。支持多个、可切换。 */
 export interface ApiProfile {
@@ -31,12 +35,21 @@ export interface TranslateParams {
   concurrency: number;
   maxRetries: number;
   contextLines: number;
+  /** 携带后文几条作为参考（批尾条目也能看到下一条），默认 2 */
+  trailingContextLines: number;
+  /** 每批原文字符数上限（0=不限）；与 batchSize 取先到者 */
+  maxCharsPerBatch: number;
+  /** 解析后按正文自动判定源语言并回填（默认开） */
+  autoDetectSource: boolean;
+  /** 翻译时使用术语表（默认开；术语表为空时无影响） */
+  useGlossary: boolean;
   /** 温度，默认 0 */
   temperature: number;
   maxTokens: number;
   /**
-   * 思考强度。字幕是逐条直译，推理帮不上忙，但思考 token 会占满 max_tokens
-   * 导致 JSON 被截断、整批重试，所以默认关闭。"auto" = 不发送该字段。
+   * 思考强度。实测关闭思考会让推理型模型把一句话在相邻两条字幕间错误重新分配
+   * （"德国人已经对德国马克说了 Auf Wiedersehen" / "对德国马克。"），
+   * 这类错误观众能直接看出来，所以默认 "medium"。"auto" = 不发送该字段。
    */
   reasoningEffort: ReasoningEffort;
 }
@@ -56,6 +69,25 @@ export interface BilingualParams {
 
 export type Phase = "idle" | "parsed" | "translating" | "done";
 
+export type QueueStatus = "pending" | "running" | "done" | "error" | "cancelled";
+
+/** 批量队列里的一个文件（见改进建议 #7：媒体库场景一次几十部起步）。 */
+export interface QueueItem {
+  id: string;
+  /** 文件名 */
+  name: string;
+  /** 相对路径（拖文件夹时含子目录），打包时保留原目录结构 */
+  path: string;
+  size: number;
+  bytes: Uint8Array;
+  status: QueueStatus;
+  error?: string;
+  translated?: number;
+  total?: number;
+  /** 翻译完成后生成的导出内容 */
+  outputs?: { path: string; content: string }[];
+}
+
 /** 可在设置弹窗里以「草稿」方式编辑、保存时整体写回的配置集合。 */
 export interface SettingsSnapshot {
   apiProfiles: ApiProfile[];
@@ -64,6 +96,7 @@ export interface SettingsSnapshot {
   bilingual: BilingualParams;
   style: StyleConfig;
   assStyle: AssStyleConfig;
+  cleanup: CleanupOptions;
 }
 
 interface AppState extends SettingsSnapshot {
@@ -73,6 +106,19 @@ interface AppState extends SettingsSnapshot {
   document: SubtitleDocument | null;
   parseIssues: ParseIssue[];
   phase: Phase;
+  /** 源字幕清理识别出的非台词条目（已应用到 document 上） */
+  cleanupMarks: CleanupMark[];
+  /** 按正文判定出的源语言（展示用；"auto"=没判定出来） */
+  detectedLang: string | null;
+
+  // 术语表
+  glossary: GlossaryEntry[];
+  glossaryStatus: "idle" | "building" | "ready" | "error";
+  glossaryError: string | null;
+
+  /** 译文体检结果（导出前的机械校验；空数组=没跑过或全部通过） */
+  qaFindings: QaFinding[];
+  qaRan: boolean;
 
   // 进度
   progress: {
@@ -83,14 +129,39 @@ interface AppState extends SettingsSnapshot {
     failedEntries: number;
   } | null;
   failedIds: number[];
+  /** 最近一次翻译失败的原因（有未翻译条目时解释原因用） */
+  translateError: string | null;
   docVersion: number;
   /** 上传时检测到「疑似已是双语」的提示（再翻译会覆盖已有译文）；可关闭。 */
   bilingualWarning: boolean;
 
+  /** 批量队列 */
+  queue: QueueItem[];
+  queueRunning: boolean;
+
   // actions
-  setDocument: (doc: SubtitleDocument, fileName: string, encoding: string, issues: ParseIssue[]) => void;
+  setDocument: (
+    doc: SubtitleDocument,
+    fileName: string,
+    encoding: string,
+    issues: ParseIssue[],
+    extra?: { cleanupMarks?: CleanupMark[]; detectedLang?: string | null },
+  ) => void;
   reset: () => void;
   updateTranslation: (id: number, text: string) => void;
+  /** 清空指定条目的译文（重译前用） */
+  clearTranslations: (ids: number[]) => void;
+  /** 恢复被清理排除的条目 */
+  restoreExcluded: (id?: number) => void;
+
+  setGlossary: (entries: GlossaryEntry[]) => void;
+  setGlossaryStatus: (status: AppState["glossaryStatus"], error?: string | null) => void;
+  setQaFindings: (findings: QaFinding[]) => void;
+
+  /** 快捷改单项参数（不走设置弹窗草稿） */
+  setParams: (p: Partial<TranslateParams>) => void;
+  /** 改源字幕清理选项（改完需由调用方重新解析当前文件） */
+  setCleanup: (p: Partial<CleanupOptions>) => void;
 
   // 这些只供「快捷控制条」即时切换（不走草稿）
   selectProfile: (id: string) => void;
@@ -102,9 +173,15 @@ interface AppState extends SettingsSnapshot {
 
   setPhase: (p: Phase) => void;
   setProgress: (p: AppState["progress"]) => void;
-  setFailedIds: (ids: number[]) => void;
+  setFailedIds: (ids: number[], error?: string | null) => void;
   bumpDocVersion: () => void;
   setBilingualWarning: (v: boolean) => void;
+
+  enqueueFiles: (items: Array<Omit<QueueItem, "id" | "status">>) => void;
+  updateQueueItem: (id: string, patch: Partial<QueueItem>) => void;
+  removeQueueItem: (id: string) => void;
+  clearQueue: () => void;
+  setQueueRunning: (v: boolean) => void;
 }
 
 export const DEFAULT_PARAMS: TranslateParams = {
@@ -116,15 +193,23 @@ export const DEFAULT_PARAMS: TranslateParams = {
   concurrency: 6,
   maxRetries: 3,
   contextLines: 3,
+  trailingContextLines: 2,
+  maxCharsPerBatch: 1600,
+  autoDetectSource: true,
+  useGlossary: true,
   temperature: 0,
-  // 8192 而非 4096：思考型模型的思考 token 也计入这个额度，4096 很容易被吃满，
-  // 导致返回的 JSON 数组被截断、整批判为失败并反复重试。
-  maxTokens: 8192,
-  reasoningEffort: "none",
+  // 16384 而非 8192：思考型模型的思考 token 也计入这个额度，实跑中 4096 全被思考
+  // 吃光、content 长度为 0（finish_reason=length），该批静默失败后走重试拆批。
+  maxTokens: 16384,
+  // 开思考慢 5 倍、贵 3 倍，但修掉的是「观众能直接看出来」的错译（相邻条目内容互换、
+  // 一词多义选错）。要速度可改回 "none"，配合「译文体检」再挑出可疑条目重译。
+  reasoningEffort: "medium",
 };
 
 export const DEFAULT_BILINGUAL: BilingualParams = {
-  layout: "dual-entry",
+  // single-entry（一条 cue 两行）而非 dual-entry：后者对同一时间轴输出两条独立 cue，
+  // Emby / Plex / Jellyfin 对重叠 cue 的堆叠渲染不一致，可能只显示一条。
+  layout: "single-entry",
   order: "translation-first",
   langCode: "",
   translatedLabel: "",
@@ -146,12 +231,23 @@ export const useAppStore = create<AppState>()(
       style: DEFAULT_STYLE,
       assStyle: DEFAULT_ASS_STYLE,
       bilingual: DEFAULT_BILINGUAL,
+      cleanup: DEFAULT_CLEANUP,
+      cleanupMarks: [],
+      detectedLang: null,
+      glossary: [],
+      glossaryStatus: "idle",
+      glossaryError: null,
+      qaFindings: [],
+      qaRan: false,
       progress: null,
       failedIds: [],
+      translateError: null,
       docVersion: 0,
       bilingualWarning: false,
+      queue: [],
+      queueRunning: false,
 
-      setDocument: (doc, fileName, encoding, issues) =>
+      setDocument: (doc, fileName, encoding, issues, extra) =>
         set((s) => ({
           document: doc,
           fileName,
@@ -160,6 +256,14 @@ export const useAppStore = create<AppState>()(
           phase: "parsed",
           progress: null,
           failedIds: [],
+          translateError: null,
+          cleanupMarks: extra?.cleanupMarks ?? [],
+          detectedLang: extra?.detectedLang ?? null,
+          glossary: [],
+          glossaryStatus: "idle",
+          glossaryError: null,
+          qaFindings: [],
+          qaRan: false,
           docVersion: s.docVersion + 1,
           bilingualWarning: false,
         })),
@@ -173,6 +277,14 @@ export const useAppStore = create<AppState>()(
           phase: "idle",
           progress: null,
           failedIds: [],
+          translateError: null,
+          cleanupMarks: [],
+          detectedLang: null,
+          glossary: [],
+          glossaryStatus: "idle",
+          glossaryError: null,
+          qaFindings: [],
+          qaRan: false,
           bilingualWarning: false,
         }),
 
@@ -183,6 +295,38 @@ export const useAppStore = create<AppState>()(
           if (entry) entry.translatedText = text;
           return { docVersion: s.docVersion + 1 };
         }),
+
+      clearTranslations: (ids) =>
+        set((s) => {
+          if (!s.document) return {};
+          const wanted = new Set(ids);
+          for (const e of s.document.entries) if (wanted.has(e.id)) e.translatedText = "";
+          return { docVersion: s.docVersion + 1 };
+        }),
+
+      restoreExcluded: (id) =>
+        set((s) => {
+          if (!s.document) return {};
+          for (const e of s.document.entries) {
+            if (id == null || e.id === id) {
+              if (e.excluded) {
+                e.excluded = false;
+                e.excludedReason = undefined;
+              }
+            }
+          }
+          return {
+            cleanupMarks: s.cleanupMarks.filter((m) => m.action !== "drop" || (id != null && m.id !== id)),
+            docVersion: s.docVersion + 1,
+          };
+        }),
+
+      setGlossary: (entries) => set({ glossary: entries }),
+      setGlossaryStatus: (status, error) => set({ glossaryStatus: status, glossaryError: error ?? null }),
+      setQaFindings: (findings) => set({ qaFindings: findings, qaRan: true }),
+
+      setParams: (p) => set((s) => ({ params: { ...s.params, ...p } })),
+      setCleanup: (p) => set((s) => ({ cleanup: { ...s.cleanup, ...p } })),
 
       selectProfile: (id) => set({ activeProfileId: id }),
       setSourceLang: (v) => set((s) => ({ params: { ...s.params, sourceLang: v } })),
@@ -196,24 +340,57 @@ export const useAppStore = create<AppState>()(
           bilingual: snap.bilingual,
           style: snap.style,
           assStyle: snap.assStyle,
+          cleanup: snap.cleanup,
         }),
 
       setPhase: (p) => set({ phase: p }),
       setProgress: (p) => set({ progress: p }),
-      setFailedIds: (ids) => set({ failedIds: ids }),
+      setFailedIds: (ids, error) => set({ failedIds: ids, translateError: error ?? null }),
       bumpDocVersion: () => set((s) => ({ docVersion: s.docVersion + 1 })),
       setBilingualWarning: (v) => set({ bilingualWarning: v }),
+
+      enqueueFiles: (items) =>
+        set((s) => ({
+          queue: [
+            ...s.queue,
+            ...items
+              // 同名同大小的文件不重复入队（拖两次同一个文件夹很常见）
+              .filter((it) => !s.queue.some((q) => q.path === it.path && q.size === it.size))
+              .map((it) => ({ ...it, id: uuid(), status: "pending" as QueueStatus })),
+          ],
+        })),
+      updateQueueItem: (id, patch) =>
+        set((s) => ({ queue: s.queue.map((q) => (q.id === id ? { ...q, ...patch } : q)) })),
+      removeQueueItem: (id) => set((s) => ({ queue: s.queue.filter((q) => q.id !== id) })),
+      clearQueue: () => set({ queue: [] }),
+      setQueueRunning: (v) => set({ queueRunning: v }),
     }),
     {
       name: "subtitle-translator",
-      version: 1,
+      version: 2,
       // v0 → v1：旧缓存里 maxTokens 停留在 4096（老默认值），思考型模型光是思考
       // 就能吃满，必须抬上来，否则老用户装了新版本依然会整批截断失败。
       // 只动等于老默认值的情况，用户手工调过的数值保持不变。
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as Partial<AppState>;
         if (version < 1 && p.params && p.params.maxTokens === 4096) {
-          p.params = { ...p.params, maxTokens: DEFAULT_PARAMS.maxTokens };
+          p.params = { ...p.params, maxTokens: 8192 };
+        }
+        // v1 → v2：停留在「老默认值」的三项在实跑中被证明会产出肉眼可见的问题，
+        // 一并抬到新默认值；用户手工调过的数值一律保持不变。
+        //  · reasoningEffort=none  → 相邻条目内容互换、一词多义选错
+        //  · maxTokens=8192        → 开思考后思考 token 吃空额度、整批静默失败
+        //  · layout=dual-entry     → 同时间轴两条 cue，部分播放器只显示一条
+        if (version < 2) {
+          if (p.params) {
+            const params = { ...p.params };
+            if (params.reasoningEffort === "none") params.reasoningEffort = DEFAULT_PARAMS.reasoningEffort;
+            if (params.maxTokens === 8192) params.maxTokens = DEFAULT_PARAMS.maxTokens;
+            p.params = params;
+          }
+          if (p.bilingual && p.bilingual.layout === "dual-entry") {
+            p.bilingual = { ...p.bilingual, layout: DEFAULT_BILINGUAL.layout };
+          }
         }
         return p as AppState;
       },
@@ -224,6 +401,7 @@ export const useAppStore = create<AppState>()(
         style: s.style,
         assStyle: s.assStyle,
         bilingual: s.bilingual,
+        cleanup: s.cleanup,
       }),
       // 深合并：保证新增字段（systemPrompt / 标签 / 配色方案等）在老缓存上也能取到默认值
       merge: (persisted, current) => {
@@ -234,6 +412,7 @@ export const useAppStore = create<AppState>()(
           params: { ...current.params, ...(p.params ?? {}) },
           bilingual: { ...current.bilingual, ...(p.bilingual ?? {}) },
           style: { ...current.style, ...(p.style ?? {}) },
+          cleanup: { ...current.cleanup, ...(p.cleanup ?? {}) },
           // 旧缓存的 assStyle 形态不同（resizeEnabled / 旧默认值），缺 forceStyle 则回退到新默认
           assStyle: p.assStyle && "forceStyle" in p.assStyle ? { ...current.assStyle, ...p.assStyle } : current.assStyle,
           apiProfiles: p.apiProfiles ?? current.apiProfiles,
@@ -269,5 +448,6 @@ export function snapshotSettings(s: AppState): SettingsSnapshot {
     bilingual: { ...s.bilingual },
     style: { ...s.style, original: { ...s.style.original }, translation: { ...s.style.translation } },
     assStyle: { ...s.assStyle },
+    cleanup: { ...s.cleanup },
   };
 }

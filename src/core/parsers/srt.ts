@@ -5,8 +5,9 @@ import type { ParseIssue, SubtitleDocument, SubtitleEntry } from "@/core/model";
 import { extractTags } from "@/core/tags";
 import { timecodeToMs } from "@/core/time";
 
+// 小时位放宽到 3 位：超长合集（>100 小时）的时间轴也能解析
 const TIMECODE_RE =
-  /(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/;
+  /(\d{1,3}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,3}):(\d{2}):(\d{2})[,.](\d{1,3})/;
 
 export interface ParseSrtResult {
   document: SubtitleDocument;

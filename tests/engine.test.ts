@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { translateDocument, type EngineOptions } from "@/core/translator/engine";
+import { chunkByBudget, translateDocument, type EngineOptions } from "@/core/translator/engine";
 import { parseTranslationResponse } from "@/core/translator/prompt";
 import { LlmError, type LlmCaller } from "@/core/translator/llmClient";
 import type { SubtitleDocument } from "@/core/model";
@@ -171,5 +171,103 @@ describe("翻译引擎", () => {
     };
     await translateDocument(doc, caller, baseOpts);
     expect(seen).toEqual([2]);
+  });
+  it("跳过清理时排除的非台词条目", async () => {
+    const doc = makeDoc(3);
+    doc.entries[1].excluded = true;
+    const seen: number[] = [];
+    const caller: LlmCaller = async (messages) => {
+      const batch = JSON.parse(messages[1].content.split("\n").pop()!) as { id: number }[];
+      batch.forEach((b) => seen.push(b.id));
+      return JSON.stringify(batch.map((b) => ({ id: b.id, text: `T${b.id}` })));
+    };
+    await translateDocument(doc, caller, baseOpts);
+    expect(seen).toEqual([1, 3]);
+    expect(doc.entries[1].translatedText).toBeUndefined();
+  });
+
+  it("带上后文上下文（仅参考，不要求翻译）", async () => {
+    const doc = makeDoc(9);
+    const prompts: string[] = [];
+    const caller: LlmCaller = async (messages) => {
+      prompts.push(messages[1].content);
+      const batch = JSON.parse(messages[1].content.split("\n").pop()!) as { id: number }[];
+      return JSON.stringify(batch.map((b) => ({ id: b.id, text: `T${b.id}` })));
+    };
+    await translateDocument(doc, caller, {
+      ...baseOpts,
+      batchSize: 3,
+      concurrency: 1,
+      contextLines: 2,
+      trailingContextLines: 2,
+    });
+    // 第一批没有前文、但有后文
+    expect(prompts[0]).not.toContain("preceding lines");
+    expect(prompts[0]).toContain("following lines");
+    // 第二批前后文都有
+    expect(prompts[1]).toContain("preceding lines");
+    expect(prompts[1]).toContain("following lines");
+    // 上下文不计入待翻译条目
+    const midBatch = JSON.parse(prompts[1].split("\n").pop()!) as { id: number }[];
+    expect(midBatch.map((b) => b.id)).toEqual([4, 5, 6]);
+    // 最后一批没有后文
+    expect(prompts[2]).not.toContain("following lines");
+  });
+
+  it("术语表按批筛选后注入 system prompt", async () => {
+    const doc = makeDoc(2);
+    doc.entries[0].originalText = "Robert, wait!";
+    doc.entries[1].originalText = "Nothing here.";
+    const systems: string[] = [];
+    const caller: LlmCaller = async (messages) => {
+      systems.push(messages[0].content);
+      const batch = JSON.parse(messages[1].content.split("\n").pop()!) as { id: number }[];
+      return JSON.stringify(batch.map((b) => ({ id: b.id, text: `T${b.id}` })));
+    };
+    await translateDocument(doc, caller, {
+      ...baseOpts,
+      batchSize: 1,
+      concurrency: 1,
+      glossary: [{ term: "Robert", translation: "罗伯特" }],
+    });
+    expect(systems[0]).toContain("Robert => 罗伯特");
+    expect(systems[1]).not.toContain("Robert => 罗伯特");
+  });
+
+  it("失败时带回最后一次错误原因", async () => {
+    const doc = makeDoc(2);
+    const caller: LlmCaller = async () => {
+      throw new LlmError("模型只输出了思考、没有输出内容", 502, "reasoning-budget");
+    };
+    const res = await translateDocument(doc, caller, { ...baseOpts, batchSize: 2, maxRetries: 0 });
+    expect(res.failedIds).toEqual([1, 2]);
+    expect(res.lastError).toContain("只输出了思考");
+  });
+
+  it("按字符数动态分批：长台词自动切小", async () => {
+    const doc = makeDoc(4);
+    doc.entries[0].originalText = "x".repeat(700);
+    doc.entries[1].originalText = "x".repeat(700);
+    const sizes: number[] = [];
+    const caller: LlmCaller = async (messages) => {
+      const batch = JSON.parse(messages[1].content.split("\n").pop()!) as { id: number }[];
+      sizes.push(batch.length);
+      return JSON.stringify(batch.map((b) => ({ id: b.id, text: `T${b.id}` })));
+    };
+    await translateDocument(doc, caller, { ...baseOpts, batchSize: 10, concurrency: 1, maxCharsPerBatch: 1000 });
+    expect(sizes[0]).toBe(1);
+    expect(sizes.reduce((a, b) => a + b, 0)).toBe(4);
+  });
+});
+
+describe("chunkByBudget", () => {
+  it("条数与字符数双上限，单条超限也自成一批", () => {
+    const items = ["a".repeat(30), "b".repeat(30), "c".repeat(200)];
+    const out = chunkByBudget(items, 10, 100, (x) => x.length);
+    expect(out.map((g) => g.length)).toEqual([2, 1]);
+  });
+  it("maxChars=0 表示不限，只看条数", () => {
+    const out = chunkByBudget([1, 2, 3, 4, 5], 2, 0, () => 1000);
+    expect(out.map((g) => g.length)).toEqual([2, 2, 1]);
   });
 });

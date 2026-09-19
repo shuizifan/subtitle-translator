@@ -10,7 +10,12 @@ import {
   type SettingsSnapshot,
   type TranslateParams,
 } from "@/store";
-import { testConnection } from "@/core/translator/llmClient";
+import {
+  effectiveMaxTokens,
+  reasoningConsumesBudget,
+  testConnection,
+  REASONING_MIN_MAX_TOKENS,
+} from "@/core/translator/llmClient";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
 import { LANGUAGE_CODES, autoDescriptor } from "@/core/naming";
 import { ASS_SIZE_PRESETS, COLOR_SCHEMES, TRANSLATION_WHITE, type AssStyleConfig, type StyleConfig } from "@/core/styling";
@@ -240,6 +245,8 @@ function ServiceTab({
 }
 
 function ParamsTab({ params, setParams }: { params: TranslateParams; setParams: (p: Partial<TranslateParams>) => void }) {
+  const reasoningOn = reasoningConsumesBudget(params.reasoningEffort);
+  const effectiveTokens = effectiveMaxTokens(params.maxTokens, params.reasoningEffort);
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -247,8 +254,10 @@ function ParamsTab({ params, setParams }: { params: TranslateParams; setParams: 
         <Num label="温度 temperature" value={params.temperature} min={0} max={2} step={0.1} onChange={(v) => setParams({ temperature: v })} />
         <Num label="并发请求数" hint="同时进行的请求数。提高可加快整体速度，但受模型供应商限流约束。" value={params.concurrency} min={1} max={20} onChange={(v) => setParams({ concurrency: v })} />
         <Num label="最大重试次数" value={params.maxRetries} min={0} max={6} onChange={(v) => setParams({ maxRetries: v })} />
-        <Num label="上下文参考条数" hint="额外携带前文几条作为参考（不翻译），提升连贯性；0 表示不带，速度更快。" value={params.contextLines} min={0} max={5} onChange={(v) => setParams({ contextLines: v })} />
-        <Num label="max tokens" hint="单次请求的最大输出额度。思考型模型的思考 token 也占这个额度，给太小会让返回的 JSON 被截断、整批重试。建议不低于 8192。" value={params.maxTokens} min={256} max={32000} step={256} onChange={(v) => setParams({ maxTokens: v })} />
+        <Num label="上下文参考条数（前文）" hint="额外携带前文几条作为参考（不翻译），提升连贯性；0 表示不带，速度更快。" value={params.contextLines} min={0} max={5} onChange={(v) => setParams({ contextLines: v })} />
+        <Num label="上下文参考条数（后文）" hint="批内条目能互相看见，但批尾那条看不到下一条；一句话正好跨批次切开时缺少判断依据。带上后文可缓解。" value={params.trailingContextLines} min={0} max={5} onChange={(v) => setParams({ trailingContextLines: v })} />
+        <Num label="每批字符上限" hint="按原文字符数动态分批，与「请求最大段落数」取先到者；0=不限。遇到成段独白时，固定条数会让一次请求要生成很长的 JSON，顶破 max tokens。" value={params.maxCharsPerBatch} min={0} max={20000} step={100} onChange={(v) => setParams({ maxCharsPerBatch: v })} />
+        <Num label="max tokens" hint="单次请求的最大输出额度。思考型模型的思考 token 也占这个额度，给太小会让返回的 JSON 被截断、整批重试。开启思考时会自动按不低于 16384 发送。" value={params.maxTokens} min={256} max={64000} step={256} onChange={(v) => setParams({ maxTokens: v })} />
         <div className="sm:col-span-2">
           <label className="label flex items-center gap-1.5">
             思考模式
@@ -259,13 +268,35 @@ function ParamsTab({ params, setParams }: { params: TranslateParams; setParams: 
             value={params.reasoningEffort}
             onChange={(e) => setParams({ reasoningEffort: e.target.value as TranslateParams["reasoningEffort"] })}
           >
-            <option value="none">关闭（推荐，字幕翻译最快）</option>
+            <option value="none">关闭（最快最省，质量下降明显）</option>
             <option value="minimal">极简</option>
             <option value="low">低</option>
-            <option value="medium">中</option>
+            <option value="medium">中（推荐）</option>
             <option value="high">高</option>
             <option value="auto">跟随服务默认（不发送该参数）</option>
           </select>
+          <p className="mt-1 text-xs text-slate-400">
+            {reasoningOn
+              ? `开启思考后会按不低于 ${REASONING_MIN_MAX_TOKENS} 的 max tokens 发送（当前实际发送 ${effectiveTokens}）——思考 token 与输出共用这个额度，给少了会返回空内容。`
+              : "关闭思考会让模型把一句话在相邻两条字幕间错误重新分配（实测：#2「德国人已经对德国马克说了 Auf Wiedersehen」/ #3「对德国马克。」），这类错误观众能直接看出来。"}
+          </p>
+        </div>
+
+        <div className="sm:col-span-2 space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+          <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input type="checkbox" className="mt-0.5" checked={params.autoDetectSource} onChange={(e) => setParams({ autoDetectSource: e.target.checked })} />
+            <span>
+              解析后自动判定源语言
+              <Tooltip content={"内封字幕的语言标签本身就不可信（标 lat 实际是西班牙语、标 eng 实际已含中文）。\n按正文内容判定更准，顺带让双语文件名从「AI中文双语」变成「AI中英双语」。"} />
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input type="checkbox" className="mt-0.5" checked={params.useGlossary} onChange={(e) => setParams({ useGlossary: e.target.checked })} />
+            <span>
+              翻译时使用术语表
+              <Tooltip content={"术语表在主界面「术语表」按钮里生成与编辑。\n它是跨批次统一人名译法的唯一手段：批与批之间是独立请求，没有共享状态。"} />
+            </span>
+          </label>
         </div>
       </div>
       <div>
@@ -351,10 +382,15 @@ function BilingualTab({
           <Tooltip content={"单轨：译文与原文写在同一条字幕的两行里。\n\n双轨：译文与原文拆成两条字幕、共用同一时间轴，如：\n00:00:00 → 00:00:03  译文…\n00:00:00 → 00:00:03  原文…"} />
         </label>
         <select className="input" value={bilingual.layout} onChange={(e) => setBilingual({ layout: e.target.value as any })}>
-          <option value="dual-entry">双轨（两条字幕，同一时间轴）</option>
-          <option value="single-entry">单轨（一条字幕，两行）</option>
+          <option value="single-entry">单轨（一条字幕，两行，推荐）</option>
+          <option value="dual-entry">双轨（两条字幕，同一时间轴，部分播放器只显示一行）</option>
           <option value="translated-only">仅译文</option>
         </select>
+        {bilingual.layout === "dual-entry" && (
+          <p className="mt-1 text-xs text-amber-600">
+            双轨会对同一时间轴输出两条独立字幕，Emby / Plex / Jellyfin 对重叠字幕的堆叠渲染不一致，可能只显示其中一条。
+          </p>
+        )}
       </div>
 
       <div>

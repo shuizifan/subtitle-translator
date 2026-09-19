@@ -24,6 +24,10 @@ export interface SubtitleEntry {
   translatedText?: string;
   /** 抽离出的格式标签及其位置，用于回填 */
   tags?: InlineTag[];
+  /** 源字幕清理判定为「非台词」（水印/占位符等）：不翻译、不导出，但仍在预览里标灰可见 */
+  excluded?: boolean;
+  /** 被排除的原因（展示用） */
+  excludedReason?: string;
 }
 
 export interface SubtitleDocument {

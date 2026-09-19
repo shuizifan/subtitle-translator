@@ -6,6 +6,7 @@
 
 import type { SubtitleDocument, SubtitleEntry } from "@/core/model";
 import { LlmError, type LlmCaller } from "@/core/translator/llmClient";
+import { selectGlossaryFor } from "@/core/glossary";
 import {
   buildMessages,
   parseTranslationResponse,
@@ -22,6 +23,16 @@ export interface EngineOptions extends PromptOptions {
   maxRetries: number;
   /** 携带前文几条作为上下文（仅参考、不翻译） */
   contextLines: number;
+  /**
+   * 携带后文几条作为上下文（仅参考、不翻译）。
+   * 批内条目能互相看见，但批尾那条看不到下一条；一句话正好跨批次切开时缺少判断依据。
+   */
+  trailingContextLines?: number;
+  /**
+   * 每批原文字符数上限（0=不限）。固定条数遇到长台词会撑爆 max_tokens，
+   * 按字符数动态分批比固定条数稳（见改进建议 #14）。
+   */
+  maxCharsPerBatch?: number;
 }
 
 export interface Progress {
@@ -44,6 +55,8 @@ export interface TranslateResult {
   failedIds: number[];
   /** 是否被用户取消 */
   cancelled: boolean;
+  /** 最后一次失败的原因（有条目失败时才有值），供 UI 解释「为什么有未翻译的行」 */
+  lastError?: string;
 }
 
 export const DEFAULT_ENGINE_OPTIONS: Omit<EngineOptions, "sourceLang" | "targetLang"> = {
@@ -51,6 +64,8 @@ export const DEFAULT_ENGINE_OPTIONS: Omit<EngineOptions, "sourceLang" | "targetL
   concurrency: 6,
   maxRetries: 3,
   contextLines: 3,
+  trailingContextLines: 2,
+  maxCharsPerBatch: 1600,
 };
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -68,14 +83,39 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/** 仅对「需要翻译」的条目编批：跳过空文本/纯空白（见规范 §11）。 */
+/** 仅对「需要翻译」的条目编批：跳过空文本/纯空白，以及清理时排除的非台词条目。 */
 function isTranslatable(e: SubtitleEntry): boolean {
-  return e.originalText.trim() !== "";
+  return e.originalText.trim() !== "" && !e.excluded;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/**
+ * 按「条数 + 字符数」双上限分批。
+ * 固定 20 条在普通对白下没问题，遇到成段独白就会让一次请求要生成很长的 JSON，
+ * 顶破 max_tokens 后整批失败重试；加一道字符数闸门能直接避开这种情况。
+ */
+export function chunkByBudget<T>(items: T[], size: number, maxChars: number, lengthOf: (x: T) => number): T[][] {
+  const limit = Math.max(1, size);
+  if (!maxChars || maxChars <= 0) return chunk(items, limit);
+  const out: T[][] = [];
+  let cur: T[] = [];
+  let chars = 0;
+  for (const it of items) {
+    const len = lengthOf(it);
+    if (cur.length > 0 && (cur.length >= limit || chars + len > maxChars)) {
+      out.push(cur);
+      cur = [];
+      chars = 0;
+    }
+    cur.push(it);
+    chars += len;
+  }
+  if (cur.length > 0) out.push(cur);
   return out;
 }
 
@@ -117,7 +157,16 @@ export async function translateDocument(
   const pending = doc.entries.filter(
     (e) => isTranslatable(e) && (e.translatedText == null || e.translatedText === ""),
   );
-  const batches = chunk(pending, Math.max(1, options.batchSize));
+  const batches = chunkByBudget(
+    pending,
+    options.batchSize,
+    options.maxCharsPerBatch ?? 0,
+    (e) => e.originalText.length,
+  );
+
+  // id → 在 doc.entries 里的下标，取上下文时 O(1)
+  const indexById = new Map<number, number>();
+  doc.entries.forEach((e, i) => indexById.set(e.id, i));
 
   const totalEntries = doc.entries.filter(isTranslatable).length;
   let translatedEntries = doc.entries.filter(
@@ -126,6 +175,7 @@ export async function translateDocument(
   let completedBatches = 0;
   const failedIds: number[] = [];
   let cancelled = false;
+  let lastError: string | undefined;
 
   const emitProgress = () => {
     onProgress?.({
@@ -140,21 +190,33 @@ export async function translateDocument(
 
   const limit = pLimit(Math.max(1, options.concurrency));
 
-  const runBatch = async (batchEntries: SubtitleEntry[]): Promise<void> => {
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-
-    // 上下文：该批第一条之前的若干条（取原文，仅参考）
-    const firstId = batchEntries[0].id;
-    const context: BatchItem[] = [];
-    if (options.contextLines > 0) {
-      const idx = doc.entries.findIndex((e) => e.id === firstId);
-      const from = Math.max(0, idx - options.contextLines);
-      for (let i = from; i < idx; i++) {
+  /** 取某段条目前后的若干条原文作为上下文（仅参考、不翻译）。 */
+  const contextAround = (part: BatchItem[]): { before: BatchItem[]; after: BatchItem[] } => {
+    const before: BatchItem[] = [];
+    const after: BatchItem[] = [];
+    const firstIdx = indexById.get(part[0].id);
+    const lastIdx = indexById.get(part[part.length - 1].id);
+    const lead = options.contextLines;
+    const trail = options.trailingContextLines ?? 0;
+    if (firstIdx != null && lead > 0) {
+      for (let i = Math.max(0, firstIdx - lead); i < firstIdx; i++) {
         if (isTranslatable(doc.entries[i])) {
-          context.push({ id: doc.entries[i].id, text: doc.entries[i].originalText });
+          before.push({ id: doc.entries[i].id, text: doc.entries[i].originalText });
         }
       }
     }
+    if (lastIdx != null && trail > 0) {
+      for (let i = lastIdx + 1; i < doc.entries.length && after.length < trail; i++) {
+        if (isTranslatable(doc.entries[i])) {
+          after.push({ id: doc.entries[i].id, text: doc.entries[i].originalText });
+        }
+      }
+    }
+    return { before, after };
+  };
+
+  const runBatch = async (batchEntries: SubtitleEntry[]): Promise<void> => {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
     let missing = batchEntries.map((e) => ({ id: e.id, text: e.originalText }));
 
@@ -175,7 +237,10 @@ export async function translateDocument(
       for (const part of chunk(missing, chunkSize)) {
         if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
         try {
-          const messages = buildMessages(part, options, context);
+          const { before, after } = contextAround(part);
+          // 只把这一批里真的出现了的术语发给模型：整表上百条既费 token 又稀释注意力
+          const glossary = selectGlossaryFor(options.glossary ?? [], part.map((p) => p.text));
+          const messages = buildMessages(part, { ...options, glossary }, before, after);
           const content = await caller(messages, signal);
           const map = parseTranslationResponse(content);
 
@@ -196,6 +261,7 @@ export async function translateDocument(
         } catch (err) {
           if (err instanceof DOMException && err.name === "AbortError") throw err;
           const status = err instanceof LlmError ? err.status : 0;
+          lastError = err instanceof Error ? err.message : String(err);
           if (status === 429 || status >= 500 || status === 0) retriableError = true;
           else fatalError = true;
           stillMissing.push(...part);
@@ -231,5 +297,5 @@ export async function translateDocument(
   }
 
   failedIds.sort((a, b) => a - b);
-  return { failedIds, cancelled };
+  return { failedIds, cancelled, lastError: failedIds.length > 0 ? lastError : undefined };
 }
