@@ -9,6 +9,7 @@ import { QualityPanel } from "@/components/QualityPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { GlobalDropzone } from "@/components/GlobalDropzone";
+import { ResumeBanner } from "@/components/ResumeBanner";
 import { SubtitleLoaderProvider } from "@/lib/SubtitleLoaderContext";
 import { useUrlImport } from "@/lib/useUrlImport";
 
@@ -26,6 +27,8 @@ export default function Home() {
     <SubtitleLoaderProvider>
       <GlobalDropzone>
         <main className="min-h-screen">
+          <ResumeBanner />
+
           {showBanner && (
             <div className="flex items-center justify-between gap-3 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
               <span>
