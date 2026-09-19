@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useDropzone } from "react-dropzone";
 import { useAppStore } from "@/store";
 import { useSubtitleLoaderContext } from "@/lib/SubtitleLoaderContext";
+import { useFileIntake } from "@/lib/useFileIntake";
 import { SUPPORTED_EXT } from "@/lib/useSubtitleLoader";
 
 /**
@@ -14,7 +15,8 @@ import { SUPPORTED_EXT } from "@/lib/useSubtitleLoader";
 export function GlobalDropzone({ children }: { children: ReactNode }) {
   const hasDoc = useAppStore((s) => s.document != null);
   const fileName = useAppStore((s) => s.fileName);
-  const { loadFile, MAX_SIZE } = useSubtitleLoaderContext();
+  const { MAX_SIZE } = useSubtitleLoaderContext();
+  const { accept } = useFileIntake();
 
   const [pending, setPending] = useState<File | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
@@ -27,9 +29,17 @@ export function GlobalDropzone({ children }: { children: ReactNode }) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (files) => {
-      const file = files[0];
-      if (!file) return;
+      if (files.length === 0) return;
       setDropError(null);
+      // 多个文件（含整个文件夹）：直接进批量队列，不打断当前文件
+      if (files.length > 1) {
+        void accept(files).then((r) => {
+          if (r.accepted === 0) setDropError("没有可用的字幕文件（支持 .srt / .ass / .ssa / .vtt / .lrc）");
+          else if (r.skipped > 0) setDropError(`已加入 ${r.accepted} 个文件，跳过 ${r.skipped} 个不支持或过大的文件`);
+        });
+        return;
+      }
+      const file = files[0];
       if (hasDoc) {
         const err = validate(file);
         if (err) {
@@ -38,12 +48,12 @@ export function GlobalDropzone({ children }: { children: ReactNode }) {
         }
         setPending(file);
       } else {
-        loadFile(file);
+        void accept([file]);
       }
     },
     noClick: true,
     noKeyboard: true,
-    multiple: false,
+    multiple: true,
   });
 
   // 错误提示数秒后自动消失
@@ -62,7 +72,7 @@ export function GlobalDropzone({ children }: { children: ReactNode }) {
   }, [pending]);
 
   const confirmReplace = () => {
-    if (pending) loadFile(pending);
+    if (pending) void accept([pending]);
     setPending(null);
   };
 
@@ -79,6 +89,7 @@ export function GlobalDropzone({ children }: { children: ReactNode }) {
             <p className="text-xl font-semibold text-white">
               {hasDoc ? "松开以替换当前字幕文件" : "松开以上传字幕文件"}
             </p>
+            <p className="mt-2 text-sm text-white/80">多个文件或整个文件夹＝批量队列</p>
           </div>
         </div>
       )}

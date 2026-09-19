@@ -2,10 +2,12 @@
 
 import { useRef } from "react";
 import { useSubtitleLoaderContext } from "@/lib/SubtitleLoaderContext";
+import { useFileIntake } from "@/lib/useFileIntake";
 
 /** 未上传文件前的上传区。点击选择文件；拖拽由整页 GlobalDropzone 统一处理（可拖到页面任意位置）。 */
 export function EmptyState() {
-  const { loadFile, reloadWithEncoding, error, lowConfidence } = useSubtitleLoaderContext();
+  const { reloadWithEncoding, error, lowConfidence } = useSubtitleLoaderContext();
+  const { accept } = useFileIntake();
   const fileInput = useRef<HTMLInputElement>(null);
 
   return (
@@ -14,10 +16,11 @@ export function EmptyState() {
         ref={fileInput}
         type="file"
         accept=".srt,.ass,.ssa,.vtt,.lrc"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) loadFile(f);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length) void accept(files);
           e.target.value = "";
         }}
       />
@@ -28,7 +31,10 @@ export function EmptyState() {
       >
         <div className="mb-4 text-5xl">🎬</div>
         <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">拖拽字幕文件到这里，或点击选择</p>
-        <p className="mt-2 text-sm text-slate-400">支持拖到页面任意位置 · .srt / .ass / .vtt / .lrc · 单文件最大 20 MB</p>
+        <p className="mt-2 text-sm text-slate-400">
+          支持拖到页面任意位置 · .srt / .ass / .vtt / .lrc · 单文件最大 20 MB
+        </p>
+        <p className="mt-1 text-sm text-slate-400">一次拖入多个文件或整个文件夹＝自动进批量队列</p>
       </button>
 
       {lowConfidence && (

@@ -69,6 +69,25 @@ export interface BilingualParams {
 
 export type Phase = "idle" | "parsed" | "translating" | "done";
 
+export type QueueStatus = "pending" | "running" | "done" | "error" | "cancelled";
+
+/** 批量队列里的一个文件（见改进建议 #7：媒体库场景一次几十部起步）。 */
+export interface QueueItem {
+  id: string;
+  /** 文件名 */
+  name: string;
+  /** 相对路径（拖文件夹时含子目录），打包时保留原目录结构 */
+  path: string;
+  size: number;
+  bytes: Uint8Array;
+  status: QueueStatus;
+  error?: string;
+  translated?: number;
+  total?: number;
+  /** 翻译完成后生成的导出内容 */
+  outputs?: { path: string; content: string }[];
+}
+
 /** 可在设置弹窗里以「草稿」方式编辑、保存时整体写回的配置集合。 */
 export interface SettingsSnapshot {
   apiProfiles: ApiProfile[];
@@ -116,6 +135,10 @@ interface AppState extends SettingsSnapshot {
   /** 上传时检测到「疑似已是双语」的提示（再翻译会覆盖已有译文）；可关闭。 */
   bilingualWarning: boolean;
 
+  /** 批量队列 */
+  queue: QueueItem[];
+  queueRunning: boolean;
+
   // actions
   setDocument: (
     doc: SubtitleDocument,
@@ -153,6 +176,12 @@ interface AppState extends SettingsSnapshot {
   setFailedIds: (ids: number[], error?: string | null) => void;
   bumpDocVersion: () => void;
   setBilingualWarning: (v: boolean) => void;
+
+  enqueueFiles: (items: Array<Omit<QueueItem, "id" | "status">>) => void;
+  updateQueueItem: (id: string, patch: Partial<QueueItem>) => void;
+  removeQueueItem: (id: string) => void;
+  clearQueue: () => void;
+  setQueueRunning: (v: boolean) => void;
 }
 
 export const DEFAULT_PARAMS: TranslateParams = {
@@ -215,6 +244,8 @@ export const useAppStore = create<AppState>()(
       translateError: null,
       docVersion: 0,
       bilingualWarning: false,
+      queue: [],
+      queueRunning: false,
 
       setDocument: (doc, fileName, encoding, issues, extra) =>
         set((s) => ({
@@ -317,6 +348,22 @@ export const useAppStore = create<AppState>()(
       setFailedIds: (ids, error) => set({ failedIds: ids, translateError: error ?? null }),
       bumpDocVersion: () => set((s) => ({ docVersion: s.docVersion + 1 })),
       setBilingualWarning: (v) => set({ bilingualWarning: v }),
+
+      enqueueFiles: (items) =>
+        set((s) => ({
+          queue: [
+            ...s.queue,
+            ...items
+              // 同名同大小的文件不重复入队（拖两次同一个文件夹很常见）
+              .filter((it) => !s.queue.some((q) => q.path === it.path && q.size === it.size))
+              .map((it) => ({ ...it, id: uuid(), status: "pending" as QueueStatus })),
+          ],
+        })),
+      updateQueueItem: (id, patch) =>
+        set((s) => ({ queue: s.queue.map((q) => (q.id === id ? { ...q, ...patch } : q)) })),
+      removeQueueItem: (id) => set((s) => ({ queue: s.queue.filter((q) => q.id !== id) })),
+      clearQueue: () => set({ queue: [] }),
+      setQueueRunning: (v) => set({ queueRunning: v }),
     }),
     {
       name: "subtitle-translator",

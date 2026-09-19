@@ -6,6 +6,7 @@ import { Toolbar } from "@/components/Toolbar";
 import { ControlBar } from "@/components/ControlBar";
 import { SubtitleTable } from "@/components/SubtitleTable";
 import { QualityPanel } from "@/components/QualityPanel";
+import { QueuePanel } from "@/components/QueuePanel";
 import { EmptyState } from "@/components/EmptyState";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { GlobalDropzone } from "@/components/GlobalDropzone";
@@ -64,6 +65,7 @@ export default function Home() {
           {hasDoc ? (
             <>
               <ControlBar onOpenSettings={() => setSettingsOpen(true)} />
+              <QueuePanel />
               <QualityPanel />
               <SubtitleTable />
             </>
