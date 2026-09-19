@@ -13,7 +13,7 @@ export function EmptyState() {
       <input
         ref={fileInput}
         type="file"
-        accept=".srt,.ass"
+        accept=".srt,.ass,.ssa,.vtt,.lrc"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -28,7 +28,7 @@ export function EmptyState() {
       >
         <div className="mb-4 text-5xl">🎬</div>
         <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">拖拽字幕文件到这里，或点击选择</p>
-        <p className="mt-2 text-sm text-slate-400">支持拖到页面任意位置 · .srt / .ass · 单文件最大 5 MB</p>
+        <p className="mt-2 text-sm text-slate-400">支持拖到页面任意位置 · .srt / .ass / .vtt / .lrc · 单文件最大 20 MB</p>
       </button>
 
       {lowConfidence && (
