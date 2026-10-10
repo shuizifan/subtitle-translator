@@ -4,7 +4,7 @@ import type { SubtitleDocument } from "@/core/model";
 import { assemble, type BilingualLayout } from "@/core/bilingual";
 import { serializeSrt } from "@/core/serializers/srt";
 import { serializeAss, type AssLayout } from "@/core/serializers/ass";
-import { buildExportName, type ExportType } from "@/core/naming";
+import { buildExportName, buildExportSuffix, type ExportNameOptions, type ExportType } from "@/core/naming";
 import type { BilingualParams, TranslateParams } from "@/store";
 import type { AssStyleConfig, StyleConfig } from "@/core/styling";
 
@@ -63,7 +63,15 @@ export function buildExport(
 
 /** 只算文件名（供 UI 实时预览）。 */
 export function exportName(fileName: string, type: ExportType, ext: "srt" | "ass", s: ExportSettings): string {
-  return buildExportName({
+  return buildExportName(nameOptions(fileName, type, ext, s));
+}
+
+export function exportSuffix(type: ExportType, ext: "srt" | "ass", s: ExportSettings): string {
+  return buildExportSuffix(nameOptions("", type, ext, s));
+}
+
+function nameOptions(fileName: string, type: ExportType, ext: "srt" | "ass", s: ExportSettings): ExportNameOptions {
+  return {
     fileName,
     baseName: s.exportBaseName,
     type,
@@ -73,7 +81,7 @@ export function exportName(fileName: string, type: ExportType, ext: "srt" | "ass
     translatedLabel: s.bilingual.translatedLabel || undefined,
     bilingualLabel: s.bilingual.bilingualLabel || undefined,
     ext,
-  });
+  };
 }
 
 /** 触发浏览器下载。 */

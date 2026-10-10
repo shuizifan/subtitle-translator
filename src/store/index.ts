@@ -15,6 +15,7 @@ import { DEFAULT_CLEANUP } from "@/core/cleanup";
 import type { GlossaryEntry } from "@/core/glossary";
 import type { GlossaryProgress } from "@/core/glossary/build";
 import type { QaFinding } from "@/core/qa";
+import { deriveBaseName } from "@/core/naming";
 
 /** 一个翻译服务配置（OpenAI 兼容）。支持多个、可切换。 */
 export interface ApiProfile {
@@ -259,7 +260,7 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           document: doc,
           fileName,
-          exportBaseName: "",
+          exportBaseName: deriveBaseName(fileName),
           detectedEncoding: encoding,
           parseIssues: issues,
           phase: "parsed",

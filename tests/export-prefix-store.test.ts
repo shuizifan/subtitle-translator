@@ -14,13 +14,14 @@ vi.hoisted(() => {
 const doc: SubtitleDocument = { taskId: "test", sourceFormat: "srt", entries: [], meta: {} };
 beforeEach(() => useAppStore.getState().reset());
 
-it("自定义前缀仅用于当前文档，换文件和清空文档恢复默认", () => {
+it("载入原文件基础名作为可编辑前缀，换文件恢复新文件的基础名", () => {
   const store = useAppStore.getState();
-  store.setDocument(doc, "Movie.srt", "UTF-8", []);
+  store.setDocument(doc, "Movie.2026.eng.srt", "UTF-8", []);
+  expect(useAppStore.getState().exportBaseName).toBe("Movie.2026");
   store.setExportBaseName("自定义片名");
   expect(useAppStore.getState().exportBaseName).toBe("自定义片名");
   store.setDocument({ ...doc, taskId: "next" }, "Next.srt", "UTF-8", []);
-  expect(useAppStore.getState().exportBaseName).toBe("");
+  expect(useAppStore.getState().exportBaseName).toBe("Next");
   store.setExportBaseName("下一部");
   store.reset();
   expect(useAppStore.getState().exportBaseName).toBe("");

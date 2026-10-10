@@ -149,9 +149,14 @@ export function buildExportName(o: ExportNameOptions): string {
   const base = o.baseName?.trim()
     ? o.baseName.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/[. ]+$/, "") || deriveBaseName(o.fileName)
     : deriveBaseName(o.fileName);
+  return `${base}${buildExportSuffix(o)}`.replace(/\.{2,}/g, ".");
+}
+
+/** 描述符、语言码与扩展名的后缀，可独立用于重命名输入框旁的预览。 */
+export function buildExportSuffix(o: Omit<ExportNameOptions, "fileName" | "baseName">): string {
   const code = o.langCode || codeOf(o.targetLang);
   const ext = o.ext ?? "srt";
   const custom = o.type === "translated" ? o.translatedLabel : o.bilingualLabel;
   const descriptor = custom && custom.trim() ? custom.trim() : autoDescriptor(o.type, o.sourceLang, o.targetLang);
-  return `${base}.${descriptor}.${code}.${ext}`.replace(/\.{2,}/g, ".");
+  return `.${descriptor}.${code}.${ext}`.replace(/\.{2,}/g, ".");
 }

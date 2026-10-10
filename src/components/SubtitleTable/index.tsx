@@ -30,7 +30,7 @@ export function SubtitleTable() {
   // 订阅这两份设置，改语言/标签后文件名预览才会跟着刷新
   useAppStore((s) => s.params);
   useAppStore((s) => s.bilingual);
-  const { previewName } = useExport();
+  const { previewSuffix } = useExport();
   useAppStore((s) => s.docVersion); // 翻译过程中增量刷新
 
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -65,6 +65,7 @@ export function SubtitleTable() {
   const qaMap = new Map(qaFindings.map((f) => [f.id, f.codes]));
   const translated = document.entries.filter((e) => e.translatedText).length;
   const excluded = document.entries.filter((e) => e.excluded).length;
+  const defaultBaseName = deriveBaseName(fileName ?? "subtitle");
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
@@ -77,25 +78,21 @@ export function SubtitleTable() {
         ｜ Tips：点击译文一栏即可修改
       </p>
 
-      {/* 导出文件名实时预览：媒体服务器只认扩展名前最后一段语言码，肉眼确认最稳 */}
-      <div className="mb-2 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <label htmlFor="export-base-name" className="text-xs text-slate-500 dark:text-slate-400">导出文件名前缀</label>
         <input
           id="export-base-name"
           className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           value={exportBaseName}
-          placeholder={deriveBaseName(fileName ?? "subtitle")}
           onChange={(event) => setExportBaseName(event.target.value)}
-          aria-describedby="export-base-name-hint"
+          aria-describedby="export-suffix-preview"
         />
-        <button className="btn-secondary" disabled={!exportBaseName} onClick={() => setExportBaseName("")}>恢复默认</button>
-        <span id="export-base-name-hint" className="w-full text-xs text-slate-400">留空使用原文件名；仅修改前缀，语言标签与扩展名自动保留。</span>
+        <button className="btn-secondary" disabled={exportBaseName === defaultBaseName} onClick={() => setExportBaseName(defaultBaseName)}>恢复默认</button>
+        <div id="export-suffix-preview" className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+          <span>仅译文 <span className="break-all font-mono text-slate-500 dark:text-slate-300">{previewSuffix("translated")}</span></span>
+          <span>双语 <span className="break-all font-mono text-slate-500 dark:text-slate-300">{previewSuffix("bilingual")}</span></span>
+        </div>
       </div>
-      <p className="mb-4 break-all font-mono text-xs text-slate-400">
-        导出为 <span className="text-slate-500 dark:text-slate-300">{previewName("translated")}</span>
-        {" / "}
-        <span className="text-slate-500 dark:text-slate-300">{previewName("bilingual")}</span>
-      </p>
 
       {translateError && navigableFailures.length > 0 && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-900/30 dark:text-amber-200">

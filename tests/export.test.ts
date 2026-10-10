@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildExport, exportName, type ExportSettings } from "@/lib/exportDoc";
+import { buildExport, exportName, exportSuffix, type ExportSettings } from "@/lib/exportDoc";
 import { DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
 import type { SubtitleDocument } from "@/core/model";
 import { parseAss } from "@/core/parsers/ass";
@@ -29,6 +29,14 @@ const doc: SubtitleDocument = {
 };
 
 describe("导出组装", () => {
+  it("后缀预览与实际导出一致，随格式、标签和语言码变化", () => {
+    expect(exportSuffix("translated", "srt", settings)).toBe(".AI中文.chs.srt");
+    expect(exportSuffix("bilingual", "ass", settings)).toBe(".AI中英双语.chs.ass");
+    const custom = { ...settings, exportBaseName: "新名字", bilingual: { ...settings.bilingual, langCode: "zh", bilingualLabel: "自定义双语" } };
+    expect(exportSuffix("bilingual", "ass", custom)).toBe(".自定义双语.zh.ass");
+    expect(exportName("Movie.ass", "bilingual", "ass", custom)).toBe(`新名字${exportSuffix("bilingual", "ass", custom)}`);
+  });
+
   it("自定义前缀同时用于文件名预览和两种实际导出", () => {
     const custom = { ...settings, exportBaseName: " 新片名 (2026).eng " };
     for (const type of ["translated", "bilingual"] as const) {
