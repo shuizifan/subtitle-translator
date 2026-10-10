@@ -150,6 +150,7 @@ async function runOne(
       glossary: cur.params.useGlossary ? cur.glossary : [],
     };
 
+    cur.setProgress(null);
     cur.setPhase("translating");
     cur.setFailedIds([]);
     let lastBump = 0;

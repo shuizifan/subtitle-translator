@@ -4,6 +4,11 @@
 
 :root {
   color-scheme: light;
+  --toolbar-height: 112px;
+  --control-bar-height: 56px;
+}
+@media (min-width: 1280px) {
+  :root { --toolbar-height: 56px; }
 }
 .dark {
   color-scheme: dark;

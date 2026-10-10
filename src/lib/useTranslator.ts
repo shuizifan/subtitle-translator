@@ -55,6 +55,7 @@ export function useTranslator() {
     }
 
     setError(null);
+    s.setProgress(null);
     s.setPhase("translating");
     s.setFailedIds([]);
     const controller = new AbortController();

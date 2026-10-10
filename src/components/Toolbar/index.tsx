@@ -6,10 +6,9 @@ import { useFileIntake } from "@/lib/useFileIntake";
 import { useExport } from "@/lib/useExport";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { siteConfig } from "@/config/site";
+import { TranslationProgress } from "@/components/TranslationProgress";
 
 export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const phase = useAppStore((s) => s.phase);
-  const progress = useAppStore((s) => s.progress);
   const hasDoc = useAppStore((s) => s.document != null);
   const { accept } = useFileIntake();
   const { exportTranslated, exportBilingual } = useExport();
@@ -18,18 +17,8 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   const canExport = hasDoc;
 
-  const status = (() => {
-    if (!hasDoc) return null;
-    if (phase === "translating") {
-      const pct = progress && progress.totalBatches ? Math.round((progress.completedBatches / progress.totalBatches) * 100) : 0;
-      return { text: `翻译中 ${pct}%`, cls: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300" };
-    }
-    if (phase === "done") return { text: "已完成翻译 ✅", cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300" };
-    return { text: "未翻译", cls: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300" };
-  })();
-
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+    <header className="sticky top-0 z-30 grid h-28 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 border-b border-slate-200 bg-white/90 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90 xl:flex xl:h-14 xl:justify-between xl:py-0">
       <div className="flex items-center gap-3">
         {siteConfig.logoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -42,11 +31,9 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
         <span className="text-base font-semibold text-slate-900 dark:text-slate-100">{siteConfig.name}</span>
       </div>
 
-      {status && (
-        <div className={`hidden rounded-full px-3 py-1 text-xs font-medium sm:block ${status.cls}`}>{status.text}</div>
-      )}
+      <TranslationProgress />
 
-      <div className="flex items-center gap-2">
+      <div className="col-span-2 flex min-w-0 items-center gap-2 overflow-x-auto [&>*]:shrink-0">
         <input
           ref={fileInput}
           type="file"

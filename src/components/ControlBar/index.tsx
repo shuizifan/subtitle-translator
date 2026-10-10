@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { getActiveProfile, useAppStore } from "@/store";
 import { useTranslator } from "@/lib/useTranslator";
 
@@ -35,6 +36,19 @@ const TARGET_LANGS = [
 ];
 
 export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const observer = new ResizeObserver(() => {
+      window.document.documentElement.style.setProperty("--control-bar-height", `${bar.getBoundingClientRect().height}px`);
+    });
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      window.document.documentElement.style.removeProperty("--control-bar-height");
+    };
+  }, []);
   const profiles = useAppStore((s) => s.apiProfiles);
   const activeId = useAppStore((s) => s.activeProfileId);
   const selectProfile = useAppStore((s) => s.selectProfile);
@@ -57,7 +71,7 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const canTranslate = !!active && !!active.baseURL && !!active.apiKey && !!active.model && remaining > 0;
 
   return (
-    <div className="sticky top-14 z-20 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-800/95">
+    <div ref={barRef} style={{ top: "var(--toolbar-height)" }} className="sticky z-20 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-800/95">
       {/* 翻译服务 */}
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-slate-500 dark:text-slate-400">翻译服务</span>
