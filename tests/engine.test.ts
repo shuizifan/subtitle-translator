@@ -59,6 +59,23 @@ describe("parseTranslationResponse", () => {
 });
 
 describe("翻译引擎", () => {
+  it("失败批次立即发布行号，其他批次尚未完成时也可定位", async () => {
+    const doc = makeDoc(2);
+    const snapshots: number[][] = [];
+    let failuresBeforeSecondBatch: number[][] = [];
+    const caller: LlmCaller = async (messages) => {
+      const batch = JSON.parse(messages[1].content.split("\n").pop()!) as { id: number }[];
+      if (batch[0].id === 1) throw new LlmError("无权限", 401);
+      failuresBeforeSecondBatch = [...snapshots];
+      return '[{"id":2,"text":"二"}]';
+    };
+    await translateDocument(doc, caller, { ...baseOpts, batchSize: 1, concurrency: 1, maxRetries: 0 }, {
+      onFailed: (ids) => snapshots.push(ids),
+    });
+    expect(snapshots).toEqual([[1]]);
+    expect(failuresBeforeSecondBatch).toEqual([[1]]);
+  });
+
   it("正常翻译：每条都有译文", async () => {
     const doc = makeDoc(25);
     const caller: LlmCaller = async (messages) => {

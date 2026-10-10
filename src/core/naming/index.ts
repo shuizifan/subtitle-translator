@@ -120,6 +120,8 @@ export function deriveBaseName(fileName: string): string {
 
 export interface ExportNameOptions {
   fileName: string; // 原始文件名
+  /** 当前文件自定义基础名（前缀），空白时沿用原文件名 */
+  baseName?: string;
   type: ExportType;
   sourceLang: string; // "auto" 表示未知
   targetLang: string;
@@ -144,7 +146,9 @@ export function autoDescriptor(type: ExportType, sourceLang: string, targetLang:
 }
 
 export function buildExportName(o: ExportNameOptions): string {
-  const base = deriveBaseName(o.fileName);
+  const base = o.baseName?.trim()
+    ? o.baseName.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/[. ]+$/, "") || deriveBaseName(o.fileName)
+    : deriveBaseName(o.fileName);
   const code = o.langCode || codeOf(o.targetLang);
   const ext = o.ext ?? "srt";
   const custom = o.type === "translated" ? o.translatedLabel : o.bilingualLabel;

@@ -45,6 +45,8 @@ export interface Progress {
 
 export interface TranslateCallbacks {
   onProgress?: (p: Progress) => void;
+  /** 某批重试耗尽后立即发布累计失败行号，供翻译过程中定位。 */
+  onFailed?: (ids: number[], error?: string) => void;
   /** 每当某条目获得译文时回调，便于增量更新预览 */
   onEntry?: (entry: SubtitleEntry) => void;
   signal?: AbortSignal;
@@ -149,7 +151,7 @@ export async function translateDocument(
   options: EngineOptions,
   callbacks: TranslateCallbacks = {},
 ): Promise<TranslateResult> {
-  const { signal, onProgress, onEntry } = callbacks;
+  const { signal, onProgress, onEntry, onFailed } = callbacks;
   const byId = new Map<number, SubtitleEntry>();
   for (const e of doc.entries) byId.set(e.id, e);
 
@@ -282,6 +284,7 @@ export async function translateDocument(
     }
 
     for (const m of missing) failedIds.push(m.id);
+    if (missing.length > 0) onFailed?.([...failedIds].sort((a, b) => a - b), lastError);
     completedBatches++;
     emitProgress();
   };

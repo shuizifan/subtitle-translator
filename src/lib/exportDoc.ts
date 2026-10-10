@@ -9,6 +9,7 @@ import type { BilingualParams, TranslateParams } from "@/store";
 import type { AssStyleConfig, StyleConfig } from "@/core/styling";
 
 export interface ExportSettings {
+  exportBaseName?: string;
   params: Pick<TranslateParams, "sourceLang" | "targetLang">;
   bilingual: BilingualParams;
   style: StyleConfig;
@@ -64,6 +65,7 @@ export function buildExport(
 export function exportName(fileName: string, type: ExportType, ext: "srt" | "ass", s: ExportSettings): string {
   return buildExportName({
     fileName,
+    baseName: s.exportBaseName,
     type,
     sourceLang: s.params.sourceLang,
     targetLang: s.params.targetLang,

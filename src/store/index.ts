@@ -103,6 +103,7 @@ export interface SettingsSnapshot {
 interface AppState extends SettingsSnapshot {
   // 文档
   fileName: string | null;
+  exportBaseName: string;
   detectedEncoding: string | null;
   document: SubtitleDocument | null;
   parseIssues: ParseIssue[];
@@ -151,6 +152,7 @@ interface AppState extends SettingsSnapshot {
     extra?: { cleanupMarks?: CleanupMark[]; detectedLang?: string | null },
   ) => void;
   reset: () => void;
+  setExportBaseName: (name: string) => void;
   updateTranslation: (id: number, text: string) => void;
   /** 清空指定条目的译文（重译前用） */
   clearTranslations: (ids: number[]) => void;
@@ -225,6 +227,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       fileName: null,
+      exportBaseName: "",
       detectedEncoding: null,
       document: null,
       parseIssues: [],
@@ -256,6 +259,7 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           document: doc,
           fileName,
+          exportBaseName: "",
           detectedEncoding: encoding,
           parseIssues: issues,
           phase: "parsed",
@@ -278,6 +282,7 @@ export const useAppStore = create<AppState>()(
         set({
           document: null,
           fileName: null,
+          exportBaseName: "",
           detectedEncoding: null,
           parseIssues: [],
           phase: "idle",
@@ -294,6 +299,8 @@ export const useAppStore = create<AppState>()(
           qaRan: false,
           bilingualWarning: false,
         }),
+
+      setExportBaseName: (exportBaseName) => set({ exportBaseName }),
 
       updateTranslation: (id, text) =>
         set((s) => {

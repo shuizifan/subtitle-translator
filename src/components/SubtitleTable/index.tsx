@@ -1,26 +1,30 @@
 "use client";
 
-import { memo, useCallback, useState, type CSSProperties } from "react";
+import { memo, useCallback, useRef, useState, type CSSProperties } from "react";
 import { useAppStore } from "@/store";
 import { msToSrtTimecode } from "@/core/time";
 import { QA_LABEL, type QaCode } from "@/core/qa";
 import { useExport } from "@/lib/useExport";
+import { deriveBaseName } from "@/core/naming";
+import { adjacentFailedId, getFailedEntryIds } from "@/core/navigation";
 
 // content-visibility:auto 让滚动区外的行跳过布局/绘制，2000+ 行也不卡；
 // contain-intrinsic-size 给出占位高度，保证滚动条与定位稳定。
 const ROW_CV: CSSProperties = {
   contentVisibility: "auto",
   containIntrinsicSize: "auto 44px",
+  scrollMarginTop: "12rem",
 };
 
 export function SubtitleTable() {
   const document = useAppStore((s) => s.document);
   const fileName = useAppStore((s) => s.fileName);
+  const exportBaseName = useAppStore((s) => s.exportBaseName);
+  const setExportBaseName = useAppStore((s) => s.setExportBaseName);
   const updateTranslation = useAppStore((s) => s.updateTranslation);
   const failedIds = useAppStore((s) => s.failedIds);
   const qaFindings = useAppStore((s) => s.qaFindings);
   const restoreExcluded = useAppStore((s) => s.restoreExcluded);
-  const progress = useAppStore((s) => s.progress);
   const translateError = useAppStore((s) => s.translateError);
   const detectedLang = useAppStore((s) => s.detectedLang);
   // 订阅这两份设置，改语言/标签后文件名预览才会跟着刷新
@@ -30,6 +34,8 @@ export function SubtitleTable() {
   useAppStore((s) => s.docVersion); // 翻译过程中增量刷新
 
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [failureCursor, setFailureCursor] = useState<{ taskId: string; id: number } | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const onCommit = useCallback(
     (id: number, text: string) => {
@@ -42,7 +48,20 @@ export function SubtitleTable() {
   const onStartEdit = useCallback((id: number) => setEditingId(id), []);
 
   if (!document) return null;
-  const failedSet = new Set(failedIds);
+  const navigableFailures = getFailedEntryIds(document.entries, failedIds);
+  const failedSet = new Set(navigableFailures);
+  const currentFailureId = failureCursor?.taskId === document.taskId ? failureCursor.id : null;
+  const currentFailureIndex = currentFailureId === null ? -1 : navigableFailures.indexOf(currentFailureId);
+  const jumpToFailure = (direction: 1 | -1) => {
+    const id = adjacentFailedId(navigableFailures, currentFailureId, direction);
+    if (id === null) return;
+    setFailureCursor({ taskId: document.taskId, id });
+    const row = tableRef.current?.querySelector<HTMLElement>(`[data-subtitle-id="${id}"]`);
+    row?.focus({ preventScroll: true });
+    // 先定位，再按可见行的真实高度校正，避免 content-visibility 的占位高度导致偏移。
+    row?.scrollIntoView({ block: "center", behavior: "instant" });
+    requestAnimationFrame(() => row?.scrollIntoView({ block: "center", behavior: "instant" }));
+  };
   const qaMap = new Map(qaFindings.map((f) => [f.id, f.codes]));
   const translated = document.entries.filter((e) => e.translatedText).length;
   const excluded = document.entries.filter((e) => e.excluded).length;
@@ -53,25 +72,49 @@ export function SubtitleTable() {
       <p className="mb-2 text-sm text-slate-400">
         共 {document.entries.length} 行 · 已译 {translated} 行
         {excluded ? ` · 已排除 ${excluded} 行（非台词）` : ""}
-        {progress?.failedEntries ? ` · 未翻译 ${progress.failedEntries} 行` : ""}
+        {navigableFailures.length ? ` · 翻译失败 ${navigableFailures.length} 行` : ""}
         {detectedLang && detectedLang !== "auto" ? ` · 判定源语言 ${detectedLang}` : ""}
         ｜ Tips：点击译文一栏即可修改
       </p>
 
       {/* 导出文件名实时预览：媒体服务器只认扩展名前最后一段语言码，肉眼确认最稳 */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <label htmlFor="export-base-name" className="text-xs text-slate-500 dark:text-slate-400">导出文件名前缀</label>
+        <input
+          id="export-base-name"
+          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+          value={exportBaseName}
+          placeholder={deriveBaseName(fileName ?? "subtitle")}
+          onChange={(event) => setExportBaseName(event.target.value)}
+          aria-describedby="export-base-name-hint"
+        />
+        <button className="btn-secondary" disabled={!exportBaseName} onClick={() => setExportBaseName("")}>恢复默认</button>
+        <span id="export-base-name-hint" className="w-full text-xs text-slate-400">留空使用原文件名；仅修改前缀，语言标签与扩展名自动保留。</span>
+      </div>
       <p className="mb-4 break-all font-mono text-xs text-slate-400">
         导出为 <span className="text-slate-500 dark:text-slate-300">{previewName("translated")}</span>
         {" / "}
         <span className="text-slate-500 dark:text-slate-300">{previewName("bilingual")}</span>
       </p>
 
-      {translateError && (
+      {translateError && navigableFailures.length > 0 && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-900/30 dark:text-amber-200">
           有条目未翻译成功，最后一次失败原因：{translateError}
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+      {navigableFailures.length > 0 && (
+        <div className="sticky top-28 z-10 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-white/95 px-3 py-2 backdrop-blur dark:border-red-500/40 dark:bg-slate-800/95">
+          <span className="mr-auto text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+            翻译失败 {navigableFailures.length} 行
+            {currentFailureIndex >= 0 ? ` · 第 ${currentFailureIndex + 1} / ${navigableFailures.length} 处（第 ${currentFailureId} 行）` : ""}
+          </span>
+          <button className="btn-secondary" onClick={() => jumpToFailure(-1)} aria-label="跳转到上一处翻译失败行">↑ 上一处</button>
+          <button className="btn-secondary" onClick={() => jumpToFailure(1)} aria-label="跳转到下一处翻译失败行">↓ 下一处</button>
+        </div>
+      )}
+
+      <div ref={tableRef} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         <div className="grid grid-cols-[56px_96px_96px_1fr_1fr] gap-0 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
           <div>序号</div>
           <div>开始时间</div>
@@ -89,6 +132,7 @@ export function SubtitleTable() {
               original={e.originalText}
               translated={e.translatedText ?? ""}
               failed={failedSet.has(e.id)}
+              activeFailure={failedSet.has(e.id) && currentFailureId === e.id}
               qaCodes={qaMap.get(e.id)}
               excluded={!!e.excluded}
               excludedReason={e.excludedReason}
@@ -111,6 +155,7 @@ interface RowProps {
   original: string;
   translated: string;
   failed: boolean;
+  activeFailure: boolean;
   qaCodes?: QaCode[];
   excluded: boolean;
   excludedReason?: string;
@@ -127,6 +172,7 @@ const Row = memo(function Row({
   original,
   translated,
   failed,
+  activeFailure,
   qaCodes,
   excluded,
   excludedReason,
@@ -137,9 +183,13 @@ const Row = memo(function Row({
 }: RowProps) {
   return (
     <div
+      data-subtitle-id={id}
+      tabIndex={-1}
       style={ROW_CV}
-      className={`grid grid-cols-[56px_96px_96px_1fr_1fr] gap-0 border-b border-slate-100 px-3 py-2 text-sm dark:border-slate-700/60 ${
-        excluded
+      className={`grid grid-cols-[56px_96px_96px_1fr_1fr] gap-0 border-b border-slate-100 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400 dark:border-slate-700/60 ${
+        activeFailure
+          ? "bg-red-50 ring-2 ring-inset ring-red-300 dark:bg-red-900/20 dark:ring-red-500/60"
+          : excluded
           ? "bg-slate-50 text-slate-400 dark:bg-slate-900/40"
           : "hover:bg-slate-50/60 dark:hover:bg-slate-700/30"
       }`}

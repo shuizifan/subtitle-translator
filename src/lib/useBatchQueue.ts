@@ -151,9 +151,11 @@ async function runOne(
     };
 
     cur.setPhase("translating");
+    cur.setFailedIds([]);
     let lastBump = 0;
     const result = await translateDocument(doc, caller, engineOpts, {
       signal,
+      onFailed: (ids, error) => useAppStore.getState().setFailedIds(ids, error),
       onProgress: (p) => {
         useAppStore.getState().setProgress(p);
         useAppStore

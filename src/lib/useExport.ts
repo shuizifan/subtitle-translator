@@ -5,7 +5,7 @@ import { buildExport, downloadText, exportName, type ExportSettings } from "@/li
 import type { ExportType } from "@/core/naming";
 
 function settingsOf(s: ReturnType<typeof useAppStore.getState>): ExportSettings {
-  return { params: s.params, bilingual: s.bilingual, style: s.style, assStyle: s.assStyle };
+  return { params: s.params, bilingual: s.bilingual, style: s.style, assStyle: s.assStyle, exportBaseName: s.exportBaseName };
 }
 
 /** 顶部「导出仅译文 / 导出双语」按钮共用的导出逻辑。 */

@@ -56,6 +56,7 @@ export function useTranslator() {
 
     setError(null);
     s.setPhase("translating");
+    s.setFailedIds([]);
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -64,6 +65,7 @@ export function useTranslator() {
       const result = await translateDocument(doc, caller, engineOptions(), {
         signal: controller.signal,
         onProgress: (p) => useAppStore.getState().setProgress(p),
+        onFailed: (ids, error) => useAppStore.getState().setFailedIds(ids, error),
         onEntry: () => {
           const now = Date.now();
           if (now - lastBump > 500) {
