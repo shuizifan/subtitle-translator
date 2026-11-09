@@ -56,6 +56,8 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const setSourceLang = useAppStore((s) => s.setSourceLang);
   const setTargetLang = useAppStore((s) => s.setTargetLang);
   const phase = useAppStore((s) => s.phase);
+  const queueRunning = useAppStore((s) => s.queueRunning);
+  const glossaryBuilding = useAppStore((s) => s.glossaryStatus === "building");
   const detectedLang = useAppStore((s) => s.detectedLang);
   const document = useAppStore((s) => s.document);
   useAppStore((s) => s.docVersion);
@@ -68,7 +70,7 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       (e) => e.originalText.trim() !== "" && (e.translatedText == null || e.translatedText === ""),
     ).length ?? 0;
 
-  const canTranslate = !!active && !!active.baseURL && !!active.apiKey && !!active.model && remaining > 0;
+  const canTranslate = !!active && !!active.baseURL && (active.authMode === "none" || !!active.apiKey) && !!active.model && remaining > 0 && !queueRunning && !glossaryBuilding;
 
   return (
     <div ref={barRef} style={{ top: "var(--toolbar-height)" }} className="sticky z-20 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-800/95">

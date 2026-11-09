@@ -3,7 +3,7 @@
 // 一部长片会抽出上百个候选，要分几批请求；整个过程可能几十秒，
 // 因此全程回报进度与已得到的部分结果，避免界面看起来像卡死。
 
-import type { LlmCaller } from "@/core/translator/llmClient";
+import { LlmError, type LlmCaller } from "@/core/translator/llmClient";
 import {
   buildGlossaryMessages,
   extractTermCandidates,
@@ -81,6 +81,7 @@ export async function buildGlossary(
   let done = 0;
   let failedChunks = 0;
   let lastError: string | undefined;
+  let terminalError: unknown;
 
   const report = () =>
     opts.onProgress?.({
@@ -97,14 +98,22 @@ export async function buildGlossary(
   let next = 0;
   const worker = async () => {
     for (;;) {
+      if (terminalError) return;
       const i = next++;
       if (i >= chunks.length) return;
       if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {
-        const content = await caller(buildGlossaryMessages(chunks[i], opts), opts.signal);
-        results[i] = parseGlossaryResponse(content);
+        const result = await caller(buildGlossaryMessages(chunks[i], opts), opts.signal, { purpose: "glossary" });
+        if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        if (typeof result !== "string" && (result.refusal || result.finishReason === "content_filter")) {
+          throw new Error("模型拒绝生成术语候选，未改动已确认术语");
+        }
+        results[i] = parseGlossaryResponse(typeof result === "string" ? result : result.content);
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") throw e;
+        if (e instanceof LlmError && e.status >= 400 && e.status < 500 && e.status !== 429) {
+          terminalError = e;
+        }
         // 单批失败不该让整张表作废，其余批次的结果照常保留
         failedChunks++;
         lastError = e instanceof Error ? e.message : String(e);
@@ -115,7 +124,11 @@ export async function buildGlossary(
       opts.onPartial?.(flatten(results));
     }
   };
-  await Promise.all(Array.from({ length: concurrency }, worker));
+  const workers = await Promise.allSettled(Array.from({ length: concurrency }, worker));
+  if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const rejected = workers.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (rejected) throw rejected.reason;
+  if (terminalError) throw terminalError;
 
   const entries = flatten(results);
   if (failedChunks === chunks.length) {

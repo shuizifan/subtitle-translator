@@ -1,55 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAppStore, newProfile } from "@/store";
+import { useEffect, useRef, useState } from "react";
+import { useAppStore, newProfile, snapshotSettings } from "@/store";
+import { buildChatCompletionsUrl } from "@/core/translator/config";
+import { readSharedProfile } from "@/core/translator/profileSharing";
 
-export interface UrlImportResult {
-  imported: boolean;
-  profileName: string;
-}
+export interface UrlImportResult { imported: boolean; profileName: string }
 
-/**
- * 从 URL 参数读取 OpenAI 兼容的 API 配置并导入到 store。
- * 支持的参数：apiKey、baseURL、model、name。
- * 导入后清除 URL 参数，避免刷新重复导入或 API Key 留在历史记录。
- */
+/** 分享配置先预览确认；旧链接密钥一律忽略，不自动切换活动服务。 */
 export function useUrlImport(): UrlImportResult | null {
   const [result, setResult] = useState<UrlImportResult | null>(null);
-  const applySettings = useAppStore((s) => s.applySettings);
-
+  const checked = useRef(false);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const apiKey = params.get("apiKey") ?? params.get("api_key") ?? "";
-    const baseURL = params.get("baseURL") ?? params.get("base_url") ?? params.get("base") ?? "";
-    const model = params.get("model") ?? "";
-    const name = params.get("name") ?? "";
-
-    if (!apiKey && !baseURL) return;
-
-    const state = useAppStore.getState();
-    let profileName = name;
-    if (!profileName) {
-      try { profileName = new URL(baseURL).hostname; } catch { profileName = ""; }
-      profileName = profileName || "Shared Config";
+    if (checked.current) return;
+    checked.current = true;
+    const url = new URL(window.location.href);
+    const fields = ["apiKey", "api_key", "baseURL", "base_url", "base", "model", "name"];
+    if (!fields.some((field) => url.searchParams.has(field))) return;
+    const params = new URLSearchParams(url.search);
+    fields.forEach((field) => url.searchParams.delete(field));
+    // 清理不能撤回已传输的旧 URL。
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    try {
+      const shared = readSharedProfile(params);
+      if (!shared) return;
+      if (!window.confirm(`导入翻译服务配置？\n名称：${shared.name}\n模型：${shared.model || "未填写"}\n请求地址：${buildChatCompletionsUrl(shared.baseURL!)}\n\n链接中的密钥不会导入，请自行填写。导入不会切换当前服务。`)) return;
+      const state = useAppStore.getState();
+      const profile = newProfile(shared);
+      state.applySettings({ ...snapshotSettings(state), apiProfiles: [...state.apiProfiles, profile] });
+      setResult({ imported: true, profileName: profile.name });
+    } catch (error) {
+      window.alert(error instanceof Error ? `配置未导入：${error.message}` : "配置未导入：无效分享链接");
     }
-    const profile = newProfile({ name: profileName, apiKey, baseURL, model });
-
-    applySettings({
-      apiProfiles: [...state.apiProfiles, profile],
-      activeProfileId: profile.id,
-      params: state.params,
-      bilingual: state.bilingual,
-      style: state.style,
-      assStyle: state.assStyle,
-      cleanup: state.cleanup,
-    });
-
-    // 清除 URL 参数，防止 API Key 残留在浏览器历史
-    const clean = window.location.pathname + window.location.hash;
-    window.history.replaceState(null, "", clean);
-
-    setResult({ imported: true, profileName });
-  }, [applySettings]);
-
+  }, []);
   return result;
 }

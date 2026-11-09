@@ -11,12 +11,15 @@ const STATUS_LABEL: Record<QueueItem["status"], { text: string; cls: string }> =
   done: { text: "完成", cls: "text-emerald-600 dark:text-emerald-400" },
   error: { text: "失败", cls: "text-red-600 dark:text-red-400" },
   cancelled: { text: "已取消", cls: "text-slate-400" },
+  review: { text: "待审核", cls: "text-amber-600" },
 };
 
 /** 批量队列面板：一次处理几十个文件，完成后打包 zip（见改进建议 #7）。 */
 export function QueuePanel() {
   const queue = useAppStore((s) => s.queue);
   const running = useAppStore((s) => s.queueRunning);
+  const busy = useAppStore((s) => s.phase === "translating" || s.glossaryStatus === "building");
+  const candidates = useAppStore((s) => s.glossaryCandidates);
   const removeQueueItem = useAppStore((s) => s.removeQueueItem);
   const clearQueue = useAppStore((s) => s.clearQueue);
   const [opts, setOpts] = useState<BatchOptions>(DEFAULT_BATCH_OPTIONS);
@@ -27,6 +30,7 @@ export function QueuePanel() {
   const done = queue.filter((q) => q.status === "done").length;
   const failed = queue.filter((q) => q.status === "error").length;
   const pending = queue.filter((q) => q.status === "pending").length;
+  const review = queue.some((q) => q.status === "review");
   const hasOutputs = queue.some((q) => q.outputs?.length);
 
   const option = (key: keyof BatchOptions, label: string) => (
@@ -59,8 +63,8 @@ export function QueuePanel() {
                 停止批量
               </button>
             ) : (
-              <button className="btn-primary" onClick={() => runAll(opts)} disabled={pending === 0}>
-                {done > 0 ? "继续批量翻译" : "开始批量翻译"}
+              <button className="btn-primary" onClick={() => runAll(opts)} disabled={busy || (!review && pending === 0) || (review && candidates.length > 0)}>
+                {review ? "审核后继续批量" : done > 0 ? "继续批量翻译" : "开始批量翻译"}
               </button>
             )}
             <button className="btn-secondary" onClick={downloadZip} disabled={!hasOutputs}>
@@ -77,12 +81,12 @@ export function QueuePanel() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-4">
-          {option("glossaryPerFile", "每部先生成术语表")}
+          {option("glossaryPerFile", "每部生成术语候选并暂停审核（额外请求）")}
           {option("exportTranslated", "导出仅译文")}
           {option("exportBilingual", "导出双语")}
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          队列按当前的翻译参数逐个处理，正在处理的文件会<strong>依次替换</strong>主界面中显示的文件；ZIP 内保留原目录结构。
+          队列按启动时的参数逐个处理，正在处理的文件会<strong>依次替换</strong>主界面中显示的文件；ZIP 内保留原目录结构。待审核时请在术语表接受或忽略候选，再继续。
         </p>
 
         <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 text-xs dark:border-slate-700">

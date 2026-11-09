@@ -10,7 +10,7 @@ import { parseLrc } from "@/core/parsers/lrc";
 import { looksAlreadyBilingual } from "@/core/bilingual";
 import { analyzeCleanup, applyCleanup } from "@/core/cleanup";
 import { detectLanguage } from "@/core/detect";
-import { useAppStore } from "@/store";
+import { useAppStore, type SettingsSnapshot } from "@/store";
 
 // 纯文本字幕极少超过 1 MB，但带大量 ASS 特效时会顶到几 MB，给足余量。
 const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
@@ -34,7 +34,7 @@ export function useSubtitleLoader() {
   const [lastName, setLastName] = useState("subtitle.srt");
 
   const loadBytes = useCallback(
-    (bytes: Uint8Array, name: string, forced?: string) => {
+    (bytes: Uint8Array, name: string, forced?: string, taskSettings?: SettingsSnapshot) => {
       setError(null);
       // 记住最近一次载入的字节：改编码重解析、改清理选项重解析都要用它
       setLastBytes(bytes);
@@ -46,7 +46,7 @@ export function useSubtitleLoader() {
 
         // 源字幕清理：识别水印/占位条并就地应用（排除的条目仍在预览里标灰可见）
         const state = useAppStore.getState();
-        const marks = analyzeCleanup(document, state.cleanup);
+        const marks = analyzeCleanup(document, taskSettings?.cleanup ?? state.cleanup);
         applyCleanup(document, marks);
 
         // 源语言判定：容器/文件名里的语言标签并不可信，按正文判断更准
@@ -57,7 +57,7 @@ export function useSubtitleLoader() {
           cleanupMarks: marks,
           detectedLang: detected.lang,
         });
-        if (state.params.autoDetectSource && detected.lang !== "auto") {
+        if ((taskSettings?.params.autoDetectSource ?? state.params.autoDetectSource) && detected.lang !== "auto") {
           useAppStore.getState().setSourceLang(detected.lang);
         }
         setBilingualWarning(looksAlreadyBilingual(document));
@@ -70,6 +70,11 @@ export function useSubtitleLoader() {
 
   const loadFile = useCallback(
     async (file: File) => {
+      const state = useAppStore.getState();
+      if (state.phase === "translating" || state.queueRunning || state.glossaryStatus === "building") {
+        setError("请先停止当前任务，再打开其他字幕");
+        return;
+      }
       setError(null);
       if (!SUPPORTED_EXT.test(file.name)) {
         setError("文件类型不支持，目前支持 .srt / .ass / .ssa / .vtt / .lrc");
@@ -86,6 +91,8 @@ export function useSubtitleLoader() {
 
   const reloadWithEncoding = useCallback(
     (enc: string) => {
+      const state = useAppStore.getState();
+      if (state.phase === "translating" || state.queueRunning || state.glossaryStatus === "building") return;
       if (lastBytes) loadBytes(lastBytes, lastName, enc === "auto" ? "auto" : normalizeLabel(enc));
     },
     [lastBytes, lastName, loadBytes],
@@ -93,6 +100,8 @@ export function useSubtitleLoader() {
 
   /** 清理选项改动后按最新设置重新解析（清理是在解析结果上就地应用的，无法原地撤销）。 */
   const reparse = useCallback(() => {
+    const state = useAppStore.getState();
+    if (state.phase === "translating" || state.queueRunning || state.glossaryStatus === "building") return;
     if (lastBytes) loadBytes(lastBytes, lastName, "auto");
   }, [lastBytes, lastName, loadBytes]);
 

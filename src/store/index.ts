@@ -7,6 +7,7 @@ import { v4 as uuid } from "uuid";
 import type { ParseIssue, SubtitleDocument } from "@/core/model";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
 import type { ReasoningEffort } from "@/core/translator/llmClient";
+import { defaultGeneration, type GenerationSettings } from "@/core/translator/config";
 import type { BilingualLayout, LanguageOrder } from "@/core/bilingual";
 import type { StyleConfig, AssStyleConfig } from "@/core/styling";
 import { DEFAULT_STYLE, DEFAULT_ASS_STYLE } from "@/core/styling";
@@ -24,11 +25,15 @@ export interface ApiProfile {
   baseURL: string;
   apiKey: string;
   model: string;
+  authMode?: "bearer" | "none";
+  rememberKey?: boolean;
+  modelConfigs?: Record<string, GenerationSettings>;
 }
 
 export interface TranslateParams {
   sourceLang: string; // "auto" = 自动检测
   targetLang: string;
+  targetLocale: string;
   customStyle: string;
   /** 可编辑的系统提示词模板（含 {{to}} {{from}} 占位符） */
   systemPrompt: string;
@@ -48,11 +53,7 @@ export interface TranslateParams {
   /** 温度，默认 0 */
   temperature: number;
   maxTokens: number;
-  /**
-   * 思考强度。实测关闭思考会让推理型模型把一句话在相邻两条字幕间错误重新分配
-   * （"德国人已经对德国马克说了 Auf Wiedersehen" / "对德国马克。"），
-   * 这类错误观众能直接看出来，所以默认 "medium"。"auto" = 不发送该字段。
-   */
+  /** 旧配置迁移字段；新配置保存在服务的 modelConfigs 中。 */
   reasoningEffort: ReasoningEffort;
 }
 
@@ -71,7 +72,7 @@ export interface BilingualParams {
 
 export type Phase = "idle" | "parsed" | "translating" | "done";
 
-export type QueueStatus = "pending" | "running" | "done" | "error" | "cancelled";
+export type QueueStatus = "pending" | "running" | "review" | "done" | "error" | "cancelled";
 
 /** 批量队列里的一个文件（见改进建议 #7：媒体库场景一次几十部起步）。 */
 export interface QueueItem {
@@ -83,6 +84,7 @@ export interface QueueItem {
   size: number;
   bytes: Uint8Array;
   status: QueueStatus;
+  reviewDocumentId?: string;
   error?: string;
   translated?: number;
   total?: number;
@@ -116,6 +118,7 @@ interface AppState extends SettingsSnapshot {
 
   // 术语表
   glossary: GlossaryEntry[];
+  glossaryCandidates: GlossaryEntry[];
   glossaryStatus: "idle" | "building" | "ready" | "error";
   glossaryError: string | null;
   /** 生成过程中的进度（扫描 / 第几批），null＝没有正在进行的生成 */
@@ -161,6 +164,7 @@ interface AppState extends SettingsSnapshot {
   restoreExcluded: (id?: number) => void;
 
   setGlossary: (entries: GlossaryEntry[]) => void;
+  setGlossaryCandidates: (entries: GlossaryEntry[]) => void;
   setGlossaryStatus: (status: AppState["glossaryStatus"], error?: string | null) => void;
   setGlossaryProgress: (p: GlossaryProgress | null) => void;
   setQaFindings: (findings: QaFinding[]) => void;
@@ -194,10 +198,11 @@ interface AppState extends SettingsSnapshot {
 export const DEFAULT_PARAMS: TranslateParams = {
   sourceLang: "auto",
   targetLang: "Simplified Chinese",
+  targetLocale: "",
   customStyle: "",
   systemPrompt: DEFAULT_STYLE_PROMPT,
   batchSize: 20,
-  concurrency: 6,
+  concurrency: 3,
   maxRetries: 3,
   contextLines: 3,
   trailingContextLines: 2,
@@ -205,12 +210,8 @@ export const DEFAULT_PARAMS: TranslateParams = {
   autoDetectSource: true,
   useGlossary: true,
   temperature: 0,
-  // 16384 而非 8192：思考型模型的思考 token 也计入这个额度，实跑中 4096 全被思考
-  // 吃光、content 长度为 0（finish_reason=length），该批静默失败后走重试拆批。
   maxTokens: 16384,
-  // 开思考慢 5 倍、贵 3 倍，但修掉的是「观众能直接看出来」的错译（相邻条目内容互换、
-  // 一词多义选错）。要速度可改回 "none"，配合「译文体检」再挑出可疑条目重译。
-  reasoningEffort: "medium",
+  reasoningEffort: "auto",
 };
 
 export const DEFAULT_BILINGUAL: BilingualParams = {
@@ -243,6 +244,7 @@ export const useAppStore = create<AppState>()(
       cleanupMarks: [],
       detectedLang: null,
       glossary: [],
+          glossaryCandidates: [],
       glossaryStatus: "idle",
       glossaryError: null,
       glossaryProgress: null,
@@ -270,6 +272,7 @@ export const useAppStore = create<AppState>()(
           cleanupMarks: extra?.cleanupMarks ?? [],
           detectedLang: extra?.detectedLang ?? null,
           glossary: [],
+          glossaryCandidates: [],
           glossaryStatus: "idle",
           glossaryError: null,
           glossaryProgress: null,
@@ -293,6 +296,7 @@ export const useAppStore = create<AppState>()(
           cleanupMarks: [],
           detectedLang: null,
           glossary: [],
+          glossaryCandidates: [],
           glossaryStatus: "idle",
           glossaryError: null,
           glossaryProgress: null,
@@ -337,6 +341,7 @@ export const useAppStore = create<AppState>()(
         }),
 
       setGlossary: (entries) => set({ glossary: entries }),
+      setGlossaryCandidates: (entries) => set({ glossaryCandidates: entries }),
       setGlossaryStatus: (status, error) =>
         set({
           glossaryStatus: status,
@@ -389,35 +394,10 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "subtitle-translator",
-      version: 2,
-      // v0 → v1：旧缓存里 maxTokens 停留在 4096（老默认值），思考型模型光是思考
-      // 就能吃满，必须抬上来，否则老用户装了新版本依然会整批截断失败。
-      // 只动等于老默认值的情况，用户手工调过的数值保持不变。
-      migrate: (persisted, version) => {
-        const p = (persisted ?? {}) as Partial<AppState>;
-        if (version < 1 && p.params && p.params.maxTokens === 4096) {
-          p.params = { ...p.params, maxTokens: 8192 };
-        }
-        // v1 → v2：停留在「老默认值」的三项在实跑中被证明会产出肉眼可见的问题，
-        // 一并抬到新默认值；用户手工调过的数值一律保持不变。
-        //  · reasoningEffort=none  → 相邻条目内容互换、一词多义选错
-        //  · maxTokens=8192        → 开思考后思考 token 吃空额度、整批静默失败
-        //  · layout=dual-entry     → 同时间轴两条 cue，部分播放器只显示一条
-        if (version < 2) {
-          if (p.params) {
-            const params = { ...p.params };
-            if (params.reasoningEffort === "none") params.reasoningEffort = DEFAULT_PARAMS.reasoningEffort;
-            if (params.maxTokens === 8192) params.maxTokens = DEFAULT_PARAMS.maxTokens;
-            p.params = params;
-          }
-          if (p.bilingual && p.bilingual.layout === "dual-entry") {
-            p.bilingual = { ...p.bilingual, layout: DEFAULT_BILINGUAL.layout };
-          }
-        }
-        return p as AppState;
-      },
+      version: 3,
+      migrate: (persisted) => migrateSettings(persisted),
       partialize: (s) => ({
-        apiProfiles: s.apiProfiles,
+        apiProfiles: profilesForStorage(s.apiProfiles),
         activeProfileId: s.activeProfileId,
         params: s.params,
         style: s.style,
@@ -458,13 +438,16 @@ export function newProfile(partial?: Partial<ApiProfile>): ApiProfile {
     baseURL: partial?.baseURL ?? "",
     apiKey: partial?.apiKey ?? "",
     model: partial?.model ?? "",
+    authMode: partial?.authMode ?? "bearer",
+    rememberKey: partial?.rememberKey ?? false,
+    modelConfigs: structuredClone(partial?.modelConfigs ?? {}),
   };
 }
 
 /** 取当前完整配置快照（供设置弹窗初始化草稿）。 */
 export function snapshotSettings(s: AppState): SettingsSnapshot {
   return {
-    apiProfiles: s.apiProfiles.map((p) => ({ ...p })),
+    apiProfiles: structuredClone(s.apiProfiles),
     activeProfileId: s.activeProfileId,
     params: { ...s.params },
     bilingual: { ...s.bilingual },
@@ -472,4 +455,32 @@ export function snapshotSettings(s: AppState): SettingsSnapshot {
     assStyle: { ...s.assStyle },
     cleanup: { ...s.cleanup },
   };
+}
+
+
+/** v0/v1/v2 仅补结构，不把等于旧默认值误当作用户未配置。 */
+export function migrateSettings(persisted: unknown): Partial<SettingsSnapshot> {
+  const p = persisted && typeof persisted === "object" && !Array.isArray(persisted)
+    ? structuredClone(persisted) as Partial<SettingsSnapshot> : {};
+  const legacy = p.params;
+  if (Array.isArray(p.apiProfiles)) {
+    p.apiProfiles = p.apiProfiles.filter((profile) => profile && typeof profile === "object").map((profile) => {
+      let models = profile.modelConfigs ?? {};
+      if (profile.model && !Object.hasOwn(models, profile.model)) {
+        models = { ...models, [profile.model]: {
+          ...defaultGeneration(),
+          temperature: typeof legacy?.temperature === "number" ? legacy.temperature : null,
+          reasoningEffort: legacy?.reasoningEffort ?? "auto",
+          outputBudget: { mode: "manual", limit: legacy?.maxTokens ?? 16384 },
+        } };
+      }
+      return { ...profile, authMode: profile.authMode ?? "bearer", rememberKey: profile.rememberKey ?? true, modelConfigs: models };
+    });
+  }
+  return p;
+}
+
+/** 会话密钥仅留在内存。持久化总是生成新对象，不修改运行配置。 */
+export function profilesForStorage(profiles: ApiProfile[]): ApiProfile[] {
+  return profiles.map((profile) => ({ ...profile, apiKey: profile.rememberKey ? profile.apiKey : "" }));
 }

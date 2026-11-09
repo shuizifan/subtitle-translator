@@ -1,153 +1,124 @@
-// LLM 转发路由（见规范 §1、§2、§9）——这是整个项目唯一的后端。
-// 无状态：只把请求转发给用户配置的 OpenAI 兼容端点。
-// key 在请求体里穿过服务端，不落库、不写进源码、不打进前端包。
-
 import { NextRequest } from "next/server";
+import { buildChatCompletionsUrl } from "@/core/translator/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// 一批字幕的生成可能要几十秒（尤其思考型模型），别让平台默认时限把请求砍成 504。
 export const maxDuration = 60;
+const MAX_BODY_BYTES = 512_000;
+const MAX_RESPONSE_BYTES = 2_000_000;
+const TRUSTED_ORIGINS = ["https://api.openai.com", "https://api.deepseek.com", "https://api.moonshot.cn", "https://api.moonshot.ai", "https://open.bigmodel.cn"];
+const json = (data: unknown, status: number) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+const object = (v: unknown): v is Record<string, any> => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** 上游超时：留一点余量给响应回传，避免被平台的 maxDuration 拦腰斩断成 504。 */
-const UPSTREAM_TIMEOUT_MS = 55_000;
-
-interface ForwardBody {
-  baseURL?: string;
-  apiKey?: string;
-  model?: string;
-  messages?: unknown;
-  temperature?: number;
-  max_tokens?: number;
-  reasoning_effort?: string;
+async function readLimited(body: ReadableStream<Uint8Array> | null, limit: number): Promise<string> {
+  if (!body) return "";
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.length;
+      if (length > limit) { await reader.cancel(); throw new Error("too-large"); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  return new TextDecoder().decode(bytes);
 }
 
-function json(data: unknown, status: number) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-/** 规范化 baseURL：去尾部斜杠，确保以 /v1 形态拼接 /chat/completions。 */
-function buildUrl(baseURL: string): string {
-  const b = baseURL.trim().replace(/\/+$/, "");
-  if (/\/chat\/completions$/.test(b)) return b; // 用户直接给了完整端点
-  return `${b}/chat/completions`;
-}
-
-/** 内网/回环地址。公网部署时要挡住，否则这个路由就成了打内网的跳板（SSRF）。 */
-function isPrivateHost(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return true;
-  if (h === "::1" || h === "0.0.0.0" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80:")) return true;
-  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
-  if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])];
-    if (a === 127 || a === 10 || a === 0) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 169 && b === 254) return true; // 云厂商 metadata 服务
-  }
-  return false;
-}
-
-/**
- * 校验用户填的端点。
- * 默认允许内网地址（本地跑 Ollama 是常见用法），公网部署时把
- * ALLOW_PRIVATE_ENDPOINTS 设为 0/false 即可关掉。
+/** 默认仅信任内置官方 origin。额外 origin 由部署管理员审核，不接受客户端传入白名单。
+ * 此策略不宣称对任意域名做 DNS 防重绑定；不要添加不受信任、可由用户控制解析的域名。
+ * 私有部署可显式开启本地模式；该模式不得暴露为无认证公网代理。
  */
 function validateEndpoint(url: string): string | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return "Base URL 不是合法的地址";
+  const u = new URL(url);
+  const localMode = /^(1|true|yes)$/i.test(process.env.ALLOW_PRIVATE_ENDPOINTS ?? "false");
+  if (localMode) return null;
+  if (u.protocol !== "https:") return "公网模式仅允许 HTTPS 模型端点；本地 Ollama 需要在本地部署应用";
+  const configured = (process.env.ALLOWED_API_ORIGINS ?? "").split(",").map(x => x.trim()).filter(Boolean);
+  if (![...TRUSTED_ORIGINS, ...configured].includes(u.origin)) return "该端点未获本站部署允许；请由管理员将受信任的 HTTPS origin 加入 ALLOWED_API_ORIGINS";
+  return null;
+}
+
+function validateBody(body: unknown): string | null {
+  if (!object(body)) return "请求体必须是 JSON 对象";
+  for (const key of ["baseURL", "model"]) if (typeof body[key] !== "string" || !body[key].trim() || body[key].length > 2048) return `${key} 必须为非空字符串且不超过 2048 字符`;
+  if (body.authMode != null && !["bearer", "none"].includes(body.authMode)) return "authMode 无效";
+  if (body.apiKey != null && (typeof body.apiKey !== "string" || body.apiKey.length > 4096 || /[\r\n]/.test(body.apiKey))) return "API Key 格式无效";
+  if (body.authMode !== "none" && !body.apiKey?.trim()) return "缺少 API Key";
+  if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 200) return "messages 必须包含 1 至 200 条消息";
+  let chars = 0;
+  for (const m of body.messages) {
+    if (!object(m) || !["system", "user", "assistant"].includes(m.role) || typeof m.content !== "string") return "messages 的 role/content 无效";
+    chars += m.content.length;
   }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return "Base URL 只支持 http/https";
-  const allowPrivate = !/^(0|false|no)$/i.test(process.env.ALLOW_PRIVATE_ENDPOINTS ?? "1");
-  if (!allowPrivate && isPrivateHost(u.hostname)) {
-    return "本站点不允许转发到内网地址；请填写公网可访问的模型端点";
+  if (chars > 100_000) return "消息正文超过 100000 字符上限";
+  if (body.temperature != null && (typeof body.temperature !== "number" || !Number.isFinite(body.temperature) || body.temperature < 0 || body.temperature > 2)) return "temperature 必须在 0 至 2 之间";
+  for (const key of ["max_tokens", "max_completion_tokens"]) if (body[key] != null && (!Number.isSafeInteger(body[key]) || body[key] < 1 || body[key] > 64000)) return `${key} 必须为 1 至 64000 的整数`;
+  if (body.max_tokens != null && body.max_completion_tokens != null) return "只能指定一种输出额度字段";
+  if (body.reasoning_effort != null && !["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(body.reasoning_effort)) return "reasoning_effort 无效";
+  if (body.response_format != null) {
+    const f = body.response_format;
+    if (!object(f) || !["json_object", "json_schema"].includes(f.type)) return "response_format 无效";
+    if (f.type === "json_schema" && (!object(f.json_schema) || typeof f.json_schema.name !== "string" || !object(f.json_schema.schema) || f.json_schema.strict !== true || JSON.stringify(f).length > 16000)) return "JSON Schema 格式或长度无效";
   }
   return null;
 }
 
+function unsupported(detail: string, field: string): boolean {
+  return new RegExp(`\\b${field}\\b`, "i").test(detail) && /unsupported|not supported|unknown parameter|unrecognized|not allowed|does not support|not compatible/i.test(detail);
+}
+
 export async function POST(req: NextRequest) {
-  let body: ForwardBody;
+  let body: Record<string, any>;
   try {
-    body = (await req.json()) as ForwardBody;
-  } catch {
-    return json({ error: { message: "请求体不是合法 JSON" } }, 400);
-  }
-
-  const { baseURL, apiKey, model, messages, temperature, max_tokens, reasoning_effort } = body;
-  if (!baseURL || !apiKey || !model || !messages) {
-    return json(
-      { error: { message: "缺少必要参数：baseURL / apiKey / model / messages" } },
-      400,
-    );
-  }
-
-  const url = buildUrl(baseURL);
-  const invalid = validateEndpoint(url);
-  if (invalid) return json({ error: { message: invalid } }, 400);
-
-  const payload: Record<string, unknown> = { model, messages, stream: false };
-  if (typeof temperature === "number") payload.temperature = temperature;
-  if (typeof max_tokens === "number") payload.max_tokens = max_tokens;
-  if (typeof reasoning_effort === "string" && reasoning_effort) {
-    payload.reasoning_effort = reasoning_effort;
-  }
-
-  // 浏览器取消翻译时连上游请求一起断掉；同时给上游一个自己的超时。
-  const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
-  const signal =
-    typeof AbortSignal.any === "function" ? AbortSignal.any([req.signal, timeout]) : timeout;
-
-  const send = (p: Record<string, unknown>) =>
-    fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(p),
-      signal,
-    });
-
+    if (Number(req.headers.get("content-length")) > MAX_BODY_BYTES) return json({ error: { message: "请求体过大" } }, 413);
+    const parsed: unknown = JSON.parse(await readLimited(req.body, MAX_BODY_BYTES));
+    const invalid = validateBody(parsed);
+    if (invalid) return json({ error: { message: invalid } }, 400);
+    body = parsed as Record<string, any>;
+  } catch (e) { return json({ error: { message: e instanceof Error && e.message === "too-large" ? "请求体过大" : "请求体不是合法 JSON" } }, e instanceof Error && e.message === "too-large" ? 413 : 400); }
+  let url: string;
+  try { url = buildChatCompletionsUrl(body.baseURL); } catch { return json({ error: { message: "Base URL 无效，不允许账号、查询参数或片段" } }, 400); }
+  const invalidEndpoint = validateEndpoint(url);
+  if (invalidEndpoint) return json({ error: { message: invalidEndpoint } }, 400);
+  const payload: Record<string, unknown> = { model: body.model.trim(), messages: body.messages.map((m: any) => ({ role: m.role, content: m.content })), stream: false };
+  for (const key of ["temperature", "max_tokens", "max_completion_tokens", "reasoning_effort", "response_format"]) if (body[key] != null) payload[key] = body[key];
+  const signal = AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (body.authMode !== "none") headers.Authorization = `Bearer ${body.apiKey}`;
+  const changes: string[] = [];
   try {
-    let upstream = await send(payload);
-
-    // 不是所有 OpenAI 兼容端点都认这些调优字段（有的直接 400）。
-    // 按「摘掉一个字段再试一次」的顺序降级，保证不会因为一个参数彻底不可用。
-    if (upstream.status === 400 && "reasoning_effort" in payload) {
-      const { reasoning_effort: _dropped, ...withoutEffort } = payload;
-      upstream = await send(withoutEffort);
-      if (upstream.status !== 400) Reflect.deleteProperty(payload, "reasoning_effort");
-    }
-
-    if (upstream.status === 400 && "max_tokens" in payload) {
-      const detail = (await upstream.clone().text()).slice(0, 2000);
-      const { max_tokens: mt, ...rest } = payload;
-      // 新版 OpenAI 系模型改叫 max_completion_tokens；其余情况直接不带额度上限
-      if (/max_completion_tokens/i.test(detail)) {
-        upstream = await send({ ...rest, max_completion_tokens: mt });
-      } else if (/max_tokens/i.test(detail)) {
-        upstream = await send(rest);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const upstream = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload), signal, redirect: "error" });
+      let text = await readLimited(upstream.body, MAX_RESPONSE_BYTES);
+      if (upstream.status === 400 && attempt < 3) {
+        // 每次仅根据明确字段错误修改当前 payload；从不移除输出上限。
+        let detail = "";
+        try { const error = JSON.parse(text)?.error; detail = typeof error?.message === "string" ? error.message : ""; } catch { /* 不对非结构化错误猜测降级 */ }
+        if ("reasoning_effort" in payload && unsupported(detail, "reasoning_effort")) { delete payload.reasoning_effort; changes.push("reasoning_effort:omitted"); continue; }
+        if ("max_tokens" in payload && /max_completion_tokens/i.test(detail) && unsupported(detail, "max_tokens")) { payload.max_completion_tokens = payload.max_tokens; delete payload.max_tokens; changes.push("max_tokens:max_completion_tokens"); continue; }
+        if ("temperature" in payload && unsupported(detail, "temperature")) { delete payload.temperature; changes.push("temperature:omitted"); continue; }
       }
+      // 错误响应可能回显请求；仅传经过脱敏的 message，避免泄漏 Key 或上游内部字段。
+      if (!upstream.ok) {
+        let message = `上游请求失败（${upstream.status}）`;
+        try { const error = JSON.parse(text)?.error; if (typeof error?.message === "string") message = error.message; } catch { /* keep generic */ }
+        if (body.apiKey) message = message.split(body.apiKey).join("[REDACTED]");
+        text = JSON.stringify({ error: { message: message.slice(0, 1000) } });
+      }
+      const outHeaders: Record<string, string> = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+      for (const name of ["retry-after", "x-request-id"]) { const value = upstream.headers.get(name); if (value && value.length <= 256) outHeaders[name] = value; }
+      if (changes.length) outHeaders["x-api-adjustments"] = changes.join(",");
+      return new Response(text, { status: upstream.status, headers: outHeaders });
     }
-
-    const text = await upstream.text();
-    // 原样回传上游状态码与响应体，前端按需解析
-    return new Response(text, {
-      status: upstream.status,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: { message: "参数兼容处理达到上限" } }, 400);
   } catch (e) {
-    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
-      return json({ error: { message: "模型 API 超时或请求已取消" } }, 504);
-    }
-    const message = e instanceof Error ? e.message : String(e);
-    return json({ error: { message: `转发到模型 API 失败：${message}` } }, 502);
+    const timedOut = e instanceof Error && ["TimeoutError", "AbortError"].includes(e.name);
+    return json({ error: { message: timedOut ? "模型 API 超时或请求已取消" : "上游连接失败、响应过大或重定向被拒绝" } }, timedOut ? 504 : 502);
   }
 }
