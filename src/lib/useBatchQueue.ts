@@ -111,7 +111,7 @@ export async function runOne(
     const isCurrent = () => useAppStore.getState().document?.taskId === doc.taskId;
 
     const profile = settings.apiProfiles.find((p) => p.id === settings.activeProfileId);
-    if (!profile || !profile.baseURL || (profile.authMode !== "none" && !profile.apiKey) || !profile.model) {
+    if (!profile || !profile.baseURL || !profile.apiKey.trim() || !profile.model) {
       throw new LlmError("请先在设置里配置并选择一个翻译服务", 400, "invalid-config");
     }
     const caller = createTrackedCaller(resolveLlmConfig(profile, settings.params));

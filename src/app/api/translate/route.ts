@@ -47,9 +47,9 @@ function validateEndpoint(url: string): string | null {
 function validateBody(body: unknown): string | null {
   if (!object(body)) return "请求体必须是 JSON 对象";
   for (const key of ["baseURL", "model"]) if (typeof body[key] !== "string" || !body[key].trim() || body[key].length > 2048) return `${key} 必须为非空字符串且不超过 2048 字符`;
-  if (body.authMode != null && !["bearer", "none"].includes(body.authMode)) return "authMode 无效";
+  if (body.authMode != null && body.authMode !== "bearer") return "authMode 无效";
   if (body.apiKey != null && (typeof body.apiKey !== "string" || body.apiKey.length > 4096 || /[\r\n]/.test(body.apiKey))) return "API Key 格式无效";
-  if (body.authMode !== "none" && !body.apiKey?.trim()) return "缺少 API Key";
+  if (!body.apiKey?.trim()) return "缺少 API Key";
   if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 200) return "messages 必须包含 1 至 200 条消息";
   let chars = 0;
   for (const m of body.messages) {
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   for (const key of ["temperature", "max_tokens", "max_completion_tokens", "reasoning_effort", "response_format"]) if (body[key] != null) payload[key] = body[key];
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (body.authMode !== "none") headers.Authorization = `Bearer ${body.apiKey}`;
+  headers.Authorization = `Bearer ${body.apiKey}`;
   const changes: string[] = [];
   try {
     for (let attempt = 0; attempt < 4; attempt++) {

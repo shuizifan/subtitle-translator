@@ -22,7 +22,7 @@ export function resolveLlmConfig(profile: ProfileConfig, legacy?: { temperature?
     ? (Object.hasOwn(profile.modelConfigs, profile.model) ? profile.modelConfigs[profile.model] : undefined)
     : profile.generation;
   const generation = saved ?? (profile.modelConfigs !== undefined ? defaultGeneration() : { ...defaultGeneration(), temperature: legacy?.temperature ?? null, reasoningEffort: legacy?.reasoningEffort ?? "auto", ...(legacy?.maxTokens != null ? { outputBudget: { mode: "manual" as const, limit: legacy.maxTokens } } : {}) });
-  return { baseURL: profile.baseURL, apiKey: profile.apiKey, model: profile.model, authMode: profile.authMode ?? "bearer", generation: { ...generation, outputBudget: { ...generation.outputBudget } } };
+  return { baseURL: profile.baseURL, apiKey: profile.apiKey, model: profile.model, authMode: "bearer", generation: { ...generation, outputBudget: { ...generation.outputBudget } } };
 }
 export function buildChatCompletionsUrl(baseURL: string): string {
   const u = new URL(baseURL.trim());

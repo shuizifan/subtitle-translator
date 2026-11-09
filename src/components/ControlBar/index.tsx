@@ -70,7 +70,7 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       (e) => e.originalText.trim() !== "" && (e.translatedText == null || e.translatedText === ""),
     ).length ?? 0;
 
-  const canTranslate = !!active && !!active.baseURL && (active.authMode === "none" || !!active.apiKey) && !!active.model && remaining > 0 && !queueRunning && !glossaryBuilding;
+  const canTranslate = !!active && !!active.baseURL && !!active.apiKey.trim() && !!active.model && remaining > 0 && !queueRunning && !glossaryBuilding;
 
   return (
     <div ref={barRef} style={{ top: "var(--toolbar-height)" }} className="sticky z-20 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-800/95">

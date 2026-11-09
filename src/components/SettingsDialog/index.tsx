@@ -60,7 +60,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
           <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">设置</h2>
-          <button className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" onClick={onClose} aria-label="关闭">
+          <button type="button" className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" onClick={onClose} aria-label="关闭">
             ✕
           </button>
         </div>
@@ -72,7 +72,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             ["prompt", "高级 · 提示词"],
             ["bilingual", "双语与导出"],
           ] as [Tab, string][]).map(([key, label]) => (
-            <button
+            <button type="button"
               key={key}
               className={`rounded-t-lg px-3 py-2 text-sm ${
                 tab === key
@@ -105,10 +105,10 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
           <span className="mr-auto text-xs text-slate-400">修改后需点「保存」才生效</span>
-          <button className="btn-secondary" onClick={onClose}>
+          <button type="button" className="btn-secondary" onClick={onClose}>
             关闭
           </button>
-          <button className="btn-primary" onClick={save}>
+          <button type="button" className="btn-primary" onClick={save}>
             保存
           </button>
         </div>
@@ -181,20 +181,20 @@ function ServiceTab({
         >
           <div className="mb-3 flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm dark:text-slate-200">
-              <input type="radio" checked={draft.activeProfileId === p.id} onChange={() => patch({ activeProfileId: p.id })} />
+              <input data-1p-ignore="true" data-lpignore="true" type="radio" checked={draft.activeProfileId === p.id} onChange={() => patch({ activeProfileId: p.id })} />
               <span className="font-medium">使用此服务</span>
             </label>
-            <button className="text-xs text-red-500 hover:underline" onClick={() => removeProfile(p.id)}>
+            <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => removeProfile(p.id)}>
               删除
             </button>
           </div>
 
           <div className="mb-3 flex flex-wrap gap-2">
             {SERVICE_PRESETS.map((sp) => (
-              <button
+              <button type="button"
                 key={sp.label}
                 className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                onClick={() => updateProfile(p.id, { name: sp.name, baseURL: sp.baseURL, model: sp.model, apiKey: "", modelConfigs: {}, authMode: sp.label === "Ollama" ? "none" : "bearer" })}
+                onClick={() => updateProfile(p.id, { name: sp.name, baseURL: sp.baseURL, model: sp.model, apiKey: "", modelConfigs: {}, authMode: "bearer" })}
               >
                 {sp.label}
               </button>
@@ -204,41 +204,32 @@ function ServiceTab({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="label">名称</label>
-              <input className="input" value={p.name} onChange={(e) => updateProfile(p.id, { name: e.target.value })} />
+              <input data-1p-ignore="true" data-lpignore="true" className="input" value={p.name} onChange={(e) => updateProfile(p.id, { name: e.target.value })} />
             </div>
             <div>
               <label className="label">模型名</label>
-              <input className="input" placeholder="gpt-4o-mini / deepseek-chat" value={p.model} onChange={(e) => updateProfile(p.id, { model: e.target.value })} />
+              <input data-1p-ignore="true" data-lpignore="true" className="input" placeholder="gpt-4o-mini / deepseek-chat" value={p.model} onChange={(e) => updateProfile(p.id, { model: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
               <label className="label">Base URL</label>
-              <input className="input" placeholder="https://api.deepseek.com/v1" value={p.baseURL} onChange={(e) => updateProfile(p.id, { baseURL: e.target.value })} />
+              <input data-1p-ignore="true" data-lpignore="true" className="input" placeholder="https://api.deepseek.com/v1" value={p.baseURL} onChange={(e) => updateProfile(p.id, { baseURL: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
               <p className="mb-2 break-all text-xs text-slate-500">请求地址：{endpointPreview(p.baseURL)}</p>
-              <label className="label">认证方式</label>
-              <select className="input mb-2" value={p.authMode ?? "bearer"} onChange={(e) => updateProfile(p.id, { authMode: e.target.value as "bearer" | "none" })}>
-                <option value="bearer">API Key（Bearer）</option>
-                <option value="none">无认证（仅适用于确认不需要密钥的服务）</option>
-              </select>
               <label className="label">API Key</label>
-              <input className="input" type="password" autoComplete="off" disabled={p.authMode === "none"} placeholder="sk-..." value={p.apiKey} onChange={(e) => updateProfile(p.id, { apiKey: e.target.value })} />
+              <input data-1p-ignore="true" data-lpignore="true" className="input" type="password" autoComplete="off" placeholder="sk-..." value={p.apiKey} onChange={(e) => updateProfile(p.id, { apiKey: e.target.value })} />
             </div>
           </div>
 
-          <label className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-            <input type="checkbox" checked={p.rememberKey ?? false} onChange={(e) => updateProfile(p.id, { rememberKey: e.target.checked })} />
-            在此设备记住密钥（未勾选时刷新页面后需重新输入）
-          </label>
-          <button className="mt-2 text-xs text-red-500 hover:underline" onClick={() => updateProfile(p.id, { apiKey: "", rememberKey: false })}>清除密钥</button>
+          <button type="button" className="mt-2 text-xs text-red-500 hover:underline" onClick={() => updateProfile(p.id, { apiKey: "" })}>清除密钥</button>
           <GenerationFields profile={p} onChange={(generation) => updateProfile(p.id, { modelConfigs: { ...p.modelConfigs, [p.model]: generation } })} />
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button className="btn-secondary" onClick={() => test(p, "connectivity")} disabled={!p.baseURL || (p.authMode !== "none" && !p.apiKey) || !p.model || results[p.id] === "loading"}>
-              {results[p.id] === "loading" ? "测试中…" : "基础连接测试"}
+            <button type="button" className="btn-secondary" onClick={() => test(p, "connectivity")} disabled={!p.baseURL || !p.apiKey || !p.model || results[p.id] === "loading"}>
+              {results[p.id] === "loading" ? "测试中…" : "测试连接"}
             </button>
-            <button className="btn-secondary" onClick={() => test(p, "protocol")} disabled={!p.baseURL || (p.authMode !== "none" && !p.apiKey) || !p.model || results[p.id] === "loading"}>字幕协议测试</button>
-            <button className="btn-secondary" onClick={() => copyShareLink(p)} disabled={!p.baseURL}>
-              {copied === p.id ? "✓ 已复制" : "分享配置（不含密钥）"}
+            <button type="button" className="btn-secondary" onClick={() => test(p, "protocol")} disabled={!p.baseURL || !p.apiKey || !p.model || results[p.id] === "loading"}>测试翻译</button>
+            <button type="button" className="btn-secondary" onClick={() => copyShareLink(p)} disabled={!p.baseURL}>
+              {copied === p.id ? "✓ 已复制" : "分享配置"}
             </button>
             {results[p.id] && results[p.id] !== "loading" && (
               <span className={`text-sm ${(results[p.id] as any).ok ? "text-green-600" : "text-red-600"}`}>{(results[p.id] as any).message}</span>
@@ -247,10 +238,10 @@ function ServiceTab({
         </div>
       ))}
 
-      <button className="btn-secondary" onClick={addProfile}>
+      <button type="button" className="btn-secondary" onClick={addProfile}>
         + 添加服务
       </button>
-      <p className="text-xs text-slate-400">请求经本站服务器转发至上方地址。新密钥默认只在当前页面会话中保存；选择记住设备后保存在浏览器 localStorage。公网部署无法通过 localhost 访问你电脑的 Ollama，本地模式需要应用服务器与 Ollama 可互达。预设会清除旧密钥。</p>
+      <p className="text-xs text-slate-400">密钥保存在此浏览器；分享链接包含密钥。</p>
     </div>
   );
 }
@@ -266,45 +257,31 @@ function GenerationFields({ profile, onChange }: { profile: ApiProfile; onChange
   const patch = (value: Partial<GenerationSettings>) => onChange({ ...settings, ...value });
   return (
     <details className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-      <summary className="cursor-pointer text-sm font-medium">当前模型参数 · {profile.model || "未填写模型"}</summary>
-      <p className="my-2 text-xs text-slate-500">仅影响此服务的当前模型。未知能力使用保守配置；手动字段请按服务文档选择。跟随服务默认不代表关闭思考或免费。</p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <summary className="cursor-pointer text-sm font-medium">模型参数 · {profile.model || "未填写模型"}</summary>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label">温度</label>
           <select className="input" value={settings.temperature == null ? "default" : "custom"} onChange={(e) => patch({ temperature: e.target.value === "default" ? null : 0 })}>
-            <option value="default">跟随服务默认（不发送）</option><option value="custom">手动指定（需模型支持）</option>
+            <option value="default">默认</option><option value="custom">自定义</option>
           </select>
           {settings.temperature != null && <Num label="temperature" value={settings.temperature} min={0} max={2} step={0.1} onChange={(temperature) => patch({ temperature })} />}
         </div>
         <div>
-          <label className="label">思考模式</label>
+          <label className="label">思考强度</label>
           <select className="input" value={settings.reasoningEffort} onChange={(e) => patch({ reasoningEffort: e.target.value as GenerationSettings["reasoningEffort"] })}>
-            <option value="auto">跟随服务默认（不发送）</option>
-            {["none", "minimal", "low", "medium", "high", "xhigh", "max"].map((level) => <option key={level} value={level}>{level}（需模型支持）</option>)}
+            <option value="auto">默认</option>
+            {["none", "minimal", "low", "medium", "high", "xhigh", "max"].map((level) => <option key={level} value={level}>{level}</option>)}
           </select>
         </div>
         <div>
           <label className="label">输出预算</label>
           <select className="input" value={settings.outputBudget.mode} onChange={(e) => patch({ outputBudget: { ...settings.outputBudget, mode: e.target.value as GenerationSettings["outputBudget"]["mode"] } })}>
-            <option value="auto">自动估算（受硬上限约束）</option><option value="manual">手动上限</option><option value="provider-default">服务默认（不限制输出额度）</option>
+            <option value="auto">自动</option><option value="manual">手动上限</option><option value="provider-default">服务默认</option>
           </select>
         </div>
-        {settings.outputBudget.mode !== "provider-default" && <Num label={settings.outputBudget.mode === "auto" ? "单请求硬上限（tokens）" : "单请求输出上限（tokens）"} value={settings.outputBudget.limit} min={64} max={131072} onChange={(limit) => patch({ outputBudget: { ...settings.outputBudget, limit } })} />}
-        <div>
-          <label className="label">额度字段</label>
-          <select className="input" value={settings.tokenField} onChange={(e) => patch({ tokenField: e.target.value as GenerationSettings["tokenField"] })}>
-            <option value="max_tokens">max_tokens（兼容接口常用）</option><option value="max_completion_tokens">max_completion_tokens</option>
-          </select>
-        </div>
-        <div>
-          <label className="label">输出格式能力</label>
-          <select className="input" value={settings.outputFormat} onChange={(e) => patch({ outputFormat: e.target.value as GenerationSettings["outputFormat"] })}>
-            <option value="text">普通文本协议（未知能力默认）</option><option value="json_object">JSON object（需服务支持）</option><option value="json_schema">严格 JSON schema（需服务支持）</option>
-          </select>
-        </div>
-        <Num label="自动预算的推理预留（tokens）" value={settings.reasoningReserve} min={0} max={131072} onChange={(reasoningReserve) => patch({ reasoningReserve })} />
+        {settings.outputBudget.mode !== "provider-default" && <Num label="输出上限（tokens）" value={settings.outputBudget.limit} min={64} max={64000} onChange={(limit) => patch({ outputBudget: { ...settings.outputBudget, limit } })} />}
+
       </div>
-      <p className="mt-2 text-xs text-slate-500">自动预算为估算，未知模型的推理消耗和上下文限额未验证。预留 0 不表示模型不会思考；截断时不会自动提高你设置的硬上限。连接测试和字幕协议测试可能产生少量费用，不代表翻译质量已通过。</p>
     </details>
   );
 }
@@ -316,19 +293,19 @@ function ParamsTab({ params, setParams }: { params: TranslateParams; setParams: 
         <Num label="请求最大段落数" hint="每次请求发给模型的字幕条数（batch size）。越大越省请求，但越易触发行错位。" value={params.batchSize} min={1} max={100} onChange={(v) => setParams({ batchSize: v })} />
         <Num label="并发请求数" hint="同时进行的请求数。提高可加快整体速度，但受模型供应商限流约束。" value={params.concurrency} min={1} max={20} onChange={(v) => setParams({ concurrency: v })} />
         <Num label="最大重试次数" value={params.maxRetries} min={0} max={6} onChange={(v) => setParams({ maxRetries: v })} />
-        <Num label="上下文参考条数（前文）" hint="额外携带前文几条作为参考（不翻译），提升连贯性；0 表示不带，速度更快。" value={params.contextLines} min={0} max={5} onChange={(v) => setParams({ contextLines: v })} />
-        <Num label="上下文参考条数（后文）" hint="批内条目能互相看见，但批尾那条看不到下一条；一句话正好跨批次切开时缺少判断依据。带上后文可缓解。" value={params.trailingContextLines} min={0} max={5} onChange={(v) => setParams({ trailingContextLines: v })} />
+        <Num label="前文参考条数" hint="额外携带前文几条作为参考（不翻译），提升连贯性；0 表示不带，速度更快。" value={params.contextLines} min={0} max={30} onChange={(v) => setParams({ contextLines: v })} />
+        <Num label="后文参考条数" hint="批内条目能互相看见，但批尾那条看不到下一条；一句话正好跨批次切开时缺少判断依据。带上后文可缓解。" value={params.trailingContextLines} min={0} max={30} onChange={(v) => setParams({ trailingContextLines: v })} />
         <Num label="每批字符上限" hint="按原文字符数动态分批，与「请求最大段落数」取先到者；0=不限。遇到成段独白时，固定条数会让一次请求要生成很长的 JSON，顶破 max tokens。" value={params.maxCharsPerBatch} min={0} max={20000} step={100} onChange={(v) => setParams({ maxCharsPerBatch: v })} />
         <div className="sm:col-span-2 space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
           <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
-            <input type="checkbox" className="mt-0.5" checked={params.autoDetectSource} onChange={(e) => setParams({ autoDetectSource: e.target.checked })} />
+            <input data-1p-ignore="true" data-lpignore="true" type="checkbox" className="mt-0.5" checked={params.autoDetectSource} onChange={(e) => setParams({ autoDetectSource: e.target.checked })} />
             <span>
               解析后自动判定源语言
               <Tooltip content={"内封字幕的语言标签本身就不可信（标 lat 实际是西班牙语、标 eng 实际已含中文）。\n按正文内容判定更准，顺带让双语文件名从「AI中文双语」变成「AI中英双语」。"} />
             </span>
           </label>
           <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
-            <input type="checkbox" className="mt-0.5" checked={params.useGlossary} onChange={(e) => setParams({ useGlossary: e.target.checked })} />
+            <input data-1p-ignore="true" data-lpignore="true" type="checkbox" className="mt-0.5" checked={params.useGlossary} onChange={(e) => setParams({ useGlossary: e.target.checked })} />
             <span>
               翻译时使用术语表
               <Tooltip content={"术语表在主界面「术语表」按钮里生成与编辑。\n确认后的词条用于跨批次统一人名与术语；模型输出仍需检查。"} />
@@ -339,11 +316,11 @@ function ParamsTab({ params, setParams }: { params: TranslateParams; setParams: 
       <p className="text-xs text-slate-500">模型温度、思考与输出预算在「翻译服务」中按服务和模型独立保存。</p>
       <div>
         <label className="label">目标语言地区 / 用词风格（可选）</label>
-        <input className="input" value={params.targetLocale} placeholder="留空跟随目标语言，例如：中国大陆通用" onChange={(e) => setParams({ targetLocale: e.target.value })} />
+        <input data-1p-ignore="true" data-lpignore="true" className="input" value={params.targetLocale} placeholder="留空跟随目标语言，例如：中国大陆通用" onChange={(e) => setParams({ targetLocale: e.target.value })} />
       </div>
       <div>
         <label className="label">自定义风格指令（追加，可选）</label>
-        <textarea className="input min-h-[60px]" placeholder="如：口语化、保留专有名词原文、医学术语用规范译名…" value={params.customStyle} onChange={(e) => setParams({ customStyle: e.target.value })} />
+        <textarea data-1p-ignore="true" className="input min-h-[60px]" placeholder="如：口语化、保留专有名词原文、医学术语用规范译名…" value={params.customStyle} onChange={(e) => setParams({ customStyle: e.target.value })} />
       </div>
     </div>
   );
@@ -356,8 +333,8 @@ function PromptTab({ params, setParams }: { params: TranslateParams; setParams: 
         系统提示词模板（可用占位符 <code>{"{{to}}"}</code> 目标语言、<code>{"{{from}}"}</code> 源语言）。
         引擎会自动追加固定输出协议，并校验 ID、重复项和缺失项。提示词不能保证语义准确，请避免要求合并或重排字幕。
       </p>
-      <textarea className="input min-h-[220px] font-mono text-xs" value={params.systemPrompt} onChange={(e) => setParams({ systemPrompt: e.target.value })} />
-      <button className="btn-secondary" onClick={() => setParams({ systemPrompt: DEFAULT_STYLE_PROMPT })}>
+      <textarea data-1p-ignore="true" className="input min-h-[220px] font-mono text-xs" value={params.systemPrompt} onChange={(e) => setParams({ systemPrompt: e.target.value })} />
+      <button type="button" className="btn-secondary" onClick={() => setParams({ systemPrompt: DEFAULT_STYLE_PROMPT })}>
         恢复默认
       </button>
     </div>
@@ -444,7 +421,7 @@ function BilingualTab({
       </div>
 
       <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
-        <input type="checkbox" className="mt-0.5" checked={bilingual.collapseLines} onChange={(e) => setBilingual({ collapseLines: e.target.checked })} />
+        <input data-1p-ignore="true" data-lpignore="true" type="checkbox" className="mt-0.5" checked={bilingual.collapseLines} onChange={(e) => setBilingual({ collapseLines: e.target.checked })} />
         <span>
           合并多行为单行
           <Tooltip content={"字幕原文常为排版被拆成多行；双语叠加后行数会翻倍（如原文 3 行 → 双语 6 行）影响观看。\n\n开启后每种语言压成一行，双语共 2 行，由播放器按宽度自动折行。"} />
@@ -498,7 +475,7 @@ function BilingualTab({
       </div>
 
       <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-        <input type="checkbox" checked={style.enableSrtColor} onChange={(e) => toggleSrtColor(e.target.checked)} />
+        <input data-1p-ignore="true" data-lpignore="true" type="checkbox" checked={style.enableSrtColor} onChange={(e) => toggleSrtColor(e.target.checked)} />
         启用 SRT 颜色（&lt;font color&gt;）
       </label>
       {style.enableSrtColor && (
@@ -523,7 +500,7 @@ function BilingualTab({
       {/* ASS 样式（仅 .ass 导出生效） */}
       <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
         <label className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
-          <input type="checkbox" checked={assStyle.forceStyle} onChange={(e) => setAssStyle({ forceStyle: e.target.checked })} />
+          <input data-1p-ignore="true" data-lpignore="true" type="checkbox" checked={assStyle.forceStyle} onChange={(e) => setAssStyle({ forceStyle: e.target.checked })} />
           强制统一 ASS 样式（译文大、原文小）
           <Tooltip content={"默认关闭＝忠实保留源字幕原有的字体/字号/颜色，只翻译文字，绝不弄崩已排版好的字幕。\n\n开启后会剥离源对白的内联字体/字号/颜色，统一套用下面的「译文大、原文小」（适合无样式或想统一外观的字幕）。\n\n字号按「占视频高度的百分比」设置，随分辨率等比缩放，手机/电脑相对画面大小一致；源文件未声明分辨率时按播放器默认 384×288 处理。"} />
         </label>
@@ -563,7 +540,7 @@ function BilingualTab({
 
             <div>
               <label className="label">统一字体（可选）</label>
-              <input
+              <input data-1p-ignore="true" data-lpignore="true"
                 className="input"
                 value={assStyle.fontName}
                 placeholder="留空＝沿用原字幕字体"
@@ -584,7 +561,7 @@ function PctField({ label, value, onChange }: { label: string; value: number; on
     <div>
       <label className="label">{label}（占视频高度 %）</label>
       <div className="flex items-center gap-2">
-        <input
+        <input data-1p-ignore="true" data-lpignore="true"
           type="number"
           className="input w-24"
           min={1}
@@ -618,13 +595,13 @@ function LabelField({
   return (
     <div>
       <label className="label">{title}</label>
-      <input className="input" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+      <input data-1p-ignore="true" data-lpignore="true" className="input" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
       <div className="mt-1.5 flex flex-wrap gap-1.5">
-        <button className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600" onClick={() => onChange("")}>
+        <button type="button" className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600" onClick={() => onChange("")}>
           自动
         </button>
         {presets.map((p) => (
-          <button key={p} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600" onClick={() => onChange(p)}>
+          <button type="button" key={p} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600" onClick={() => onChange(p)}>
             {p}
           </button>
         ))}
@@ -656,7 +633,7 @@ function Num({
         {label}
         {hint && <Tooltip content={hint} />}
       </label>
-      <input
+      <input data-1p-ignore="true" data-lpignore="true"
         className="input"
         type="number"
         min={min}
@@ -677,8 +654,8 @@ function Color({ label, value, onChange }: { label: string; value: string; onCha
     <div>
       <label className="label">{label}</label>
       <div className="flex items-center gap-2">
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} />
-        <input className="input" value={value} onChange={(e) => onChange(e.target.value)} />
+        <input data-1p-ignore="true" data-lpignore="true" type="color" value={value} onChange={(e) => onChange(e.target.value)} />
+        <input data-1p-ignore="true" data-lpignore="true" className="input" value={value} onChange={(e) => onChange(e.target.value)} />
       </div>
     </div>
   );

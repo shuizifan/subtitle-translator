@@ -76,7 +76,7 @@ export function createForwardingCaller(config: LlmConfig): LlmCaller {
     const parameters = { ...(g.temperature !== null ? { temperature: g.temperature } : {}), ...(budget != null ? { [g.tokenField]: budget } : {}), ...(g.reasoningEffort !== "auto" ? { reasoning_effort: g.reasoningEffort } : {}), ...(g.outputFormat !== "text" ? { response_format: responseFormat(g.outputFormat, options?.purpose) } : {}) };
     const started = Date.now();
     const res = await fetch("/api/translate", { method: "POST", headers: { "Content-Type": "application/json" }, signal,
-      body: JSON.stringify({ baseURL: config.baseURL, apiKey: config.apiKey, authMode: config.authMode ?? "bearer", model: config.model, messages, ...parameters }),
+      body: JSON.stringify({ baseURL: config.baseURL, apiKey: config.apiKey, authMode: "bearer", model: config.model, messages, ...parameters }),
     });
     const raw = await res.text();
     if (!res.ok) {

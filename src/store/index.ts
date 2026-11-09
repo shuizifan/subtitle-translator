@@ -204,8 +204,8 @@ export const DEFAULT_PARAMS: TranslateParams = {
   batchSize: 20,
   concurrency: 3,
   maxRetries: 3,
-  contextLines: 3,
-  trailingContextLines: 2,
+  contextLines: 10,
+  trailingContextLines: 5,
   maxCharsPerBatch: 1600,
   autoDetectSource: true,
   useGlossary: true,
@@ -394,7 +394,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "subtitle-translator",
-      version: 3,
+      version: 4,
       migrate: (persisted) => migrateSettings(persisted),
       partialize: (s) => ({
         apiProfiles: profilesForStorage(s.apiProfiles),
@@ -438,8 +438,8 @@ export function newProfile(partial?: Partial<ApiProfile>): ApiProfile {
     baseURL: partial?.baseURL ?? "",
     apiKey: partial?.apiKey ?? "",
     model: partial?.model ?? "",
-    authMode: partial?.authMode ?? "bearer",
-    rememberKey: partial?.rememberKey ?? false,
+    authMode: "bearer",
+    rememberKey: true,
     modelConfigs: structuredClone(partial?.modelConfigs ?? {}),
   };
 }
@@ -474,13 +474,13 @@ export function migrateSettings(persisted: unknown): Partial<SettingsSnapshot> {
           outputBudget: { mode: "manual", limit: legacy?.maxTokens ?? 16384 },
         } };
       }
-      return { ...profile, authMode: profile.authMode ?? "bearer", rememberKey: profile.rememberKey ?? true, modelConfigs: models };
+      return { ...profile, authMode: "bearer", rememberKey: true, modelConfigs: models };
     });
   }
   return p;
 }
 
-/** 会话密钥仅留在内存。持久化总是生成新对象，不修改运行配置。 */
+/** 保存全部服务密钥；生成新对象，不修改运行配置。 */
 export function profilesForStorage(profiles: ApiProfile[]): ApiProfile[] {
-  return profiles.map((profile) => ({ ...profile, apiKey: profile.rememberKey ? profile.apiKey : "" }));
+  return profiles.map((profile) => ({ ...profile, authMode: "bearer", rememberKey: true }));
 }

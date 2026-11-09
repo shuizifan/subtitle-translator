@@ -10,7 +10,7 @@ import { buildGlossary } from "@/core/glossary/build";
 /** 从 store 里取当前激活服务，拼一个调用器；配置不全时返回 null。 */
 function makeCaller(s = useAppStore.getState()) {
   const profile = getActiveProfile(s);
-  if (!profile || !profile.baseURL || (profile.authMode !== "none" && !profile.apiKey) || !profile.model) return null;
+  if (!profile || !profile.baseURL || !profile.apiKey.trim() || !profile.model) return null;
   return createTrackedCaller(resolveLlmConfig(profile, s.params));
 }
 

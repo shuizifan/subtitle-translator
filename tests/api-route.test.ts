@@ -8,7 +8,7 @@ const failure = (message: string) => new Response(JSON.stringify({ error: { mess
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("转发运行时校验与端点边界", () => {
-  it.each([null, [], { ...valid, baseURL: 123 }, { ...valid, messages: "bad" }, { ...valid, temperature: 3 }, { ...valid, max_tokens: 0 }, { ...valid, max_completion_tokens: 100 }, { ...valid, apiKey: "\r\nfoo" }])("非法输入返回400且不访问上游: %j", async body => {
+  it.each([null, [], { ...valid, baseURL: 123 }, { ...valid, messages: "bad" }, { ...valid, temperature: 3 }, { ...valid, max_tokens: 0 }, { ...valid, max_completion_tokens: 100 }, { ...valid, apiKey: "\r\nfoo" }, { ...valid, apiKey: "" }, { ...valid, apiKey: "  " }, { ...valid, authMode: "none" }])("非法输入返回400且不访问上游: %j", async body => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     expect((await POST(request(body))).status).toBe(400); expect(fetch).not.toHaveBeenCalled();
   });
@@ -21,11 +21,11 @@ describe("转发运行时校验与端点边界", () => {
     expect((await POST(request({ ...valid, baseURL: "https://custom.example/v1" }))).status).toBe(200);
     expect(fetch.mock.calls[0][1].redirect).toBe("error");
   });
-  it("显式本地模式允许无认证Ollama，不附加Bearer", async () => {
+  it("显式本地模式仍使用API Key认证", async () => {
     vi.stubEnv("ALLOW_PRIVATE_ENDPOINTS", "true");
     const fetch = vi.fn().mockResolvedValue(new Response("{}")); vi.stubGlobal("fetch", fetch);
-    expect((await POST(request({ ...valid, baseURL: "http://localhost:11434/v1", authMode: "none", apiKey: "" }))).status).toBe(200);
-    expect(fetch.mock.calls[0][1].headers).not.toHaveProperty("Authorization");
+    expect((await POST(request({ ...valid, baseURL: "http://localhost:11434/v1", authMode: "bearer" }))).status).toBe(200);
+    expect(fetch.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${valid.apiKey}`);
   });
   it("按实际流限制请求体长度", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

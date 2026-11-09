@@ -14,7 +14,13 @@ vi.hoisted(() => {
   vi.stubGlobal("window", { localStorage: storage });
 });
 
-describe("模型配置迁移和会话密钥", () => {
+describe("模型配置迁移和密钥保存", () => {
+  it("统一旧认证和保存选项，但保留用户已有上下文条数", () => {
+    const migrated = migrateSettings({ apiProfiles: [{ id: "old", model: "a", apiKey: "test-key", authMode: "none", rememberKey: false, modelConfigs: {} }], params: { contextLines: 3, trailingContextLines: 2 } });
+    expect(migrated.apiProfiles?.[0]).toMatchObject({ authMode: "bearer", rememberKey: true, apiKey: "test-key" });
+    expect(migrated.params).toMatchObject({ contextLines: 3, trailingContextLines: 2 });
+    expect(DEFAULT_PARAMS).toMatchObject({ contextLines: 10, trailingContextLines: 5 });
+  });
   it("保留旧显式 none、8192 和双轨，迁移不重复改值", () => {
     const old = {
       apiProfiles: [{ id: "old", name: "old", model: "model-a", baseURL: "https://a.test/v1", apiKey: "test-only-secret" }],
@@ -50,12 +56,12 @@ describe("模型配置迁移和会话密钥", () => {
     expect(profile.modelConfigs!.a.outputBudget.limit).toBe(16384);
   });
 
-  it("新密钥不持久化，记住设备才保留，运行配置不被清空", () => {
+  it("新密钥默认保存，旧不记住选项不再影响保存", () => {
     const profile = newProfile({ apiKey: "test-only-secret" });
-    expect(profile.rememberKey).toBe(false);
-    expect(profilesForStorage([profile])[0].apiKey).toBe("");
+    expect(profile.rememberKey).toBe(true);
+    expect(profilesForStorage([profile])[0].apiKey).toBe("test-only-secret");
     expect(profile.apiKey).toBe("test-only-secret");
-    expect(profilesForStorage([{ ...profile, rememberKey: true }])[0].apiKey).toBe("test-only-secret");
+    expect(profilesForStorage([{ ...profile, rememberKey: false }])[0].apiKey).toBe("test-only-secret");
   });
 
   it("读取模型名 __proto__ 不取原型对象", () => {
@@ -63,12 +69,12 @@ describe("模型配置迁移和会话密钥", () => {
     expect(resolveLlmConfig(profile).generation).toEqual(defaultGeneration());
   });
 
-  it("实际 Zustand 持久化不会写入会话密钥", () => {
+  it("实际 Zustand 持久化会写入密钥", () => {
     const state = useAppStore.getState();
     const profile = newProfile({ apiKey: "session-secret", model: "a" });
     state.applySettings({ ...snapshotSettings(state), apiProfiles: [profile], activeProfileId: profile.id });
     const saved = JSON.parse(localStorage.getItem("subtitle-translator")!);
-    expect(saved.state.apiProfiles[0].apiKey).toBe("");
+    expect(saved.state.apiProfiles[0].apiKey).toBe("session-secret");
     expect(useAppStore.getState().apiProfiles[0].apiKey).toBe("session-secret");
   });
 
@@ -84,17 +90,26 @@ describe("模型配置迁移和会话密钥", () => {
 
 describe("分享与端点变更", () => {
   const profile = newProfile({ name: "示例", baseURL: "https://api.example.com/v1", model: "a", apiKey: "test-only-secret" });
-  it("分享严格使用非敏感白名单，不继承当前地址里的 Key", () => {
+  it("分享片段包含所选服务密钥和模型参数，不继承原地址", () => {
     const shared = buildProfileShareUrl("https://app.test/?apiKey=old-key#secret", profile);
-    expect(shared).not.toContain("secret");
-    expect(shared).not.toContain("apiKey");
+    expect(new URL(shared).search).toBe("");
+    expect(new URLSearchParams(new URL(shared).hash.slice(1)).get("apiKey")).toBe(profile.apiKey);
     expect(shared).not.toContain("old-key");
-    expect(new URL(shared).searchParams.get("model")).toBe("a");
+    expect(readSharedProfile(new URLSearchParams(new URL(shared).hash.slice(1)))?.modelConfigs?.a).toEqual(defaultGeneration());
   });
-  it("旧链接密钥被忽略，凭据嵌入 URL 被拒绝", () => {
+  it("旧链接可导入密钥，凭据嵌入端点 URL 被拒绝", () => {
     const data = readSharedProfile(new URLSearchParams("baseURL=https%3A%2F%2Fapi.example.com%2Fv1&apiKey=old-secret&model=a"));
-    expect(data?.apiKey).toBe("");
+    expect(data?.apiKey).toBe("old-secret");
     expect(() => readSharedProfile(new URLSearchParams("baseURL=https%3A%2F%2Fuser%3Apass%40api.example.com"))).toThrow();
+  });
+  it("特殊字符密钥和中文服务名完整往返，不泄露其他模型配置", () => {
+    const source = { ...profile, apiKey: "test-+/=&?#中文", modelConfigs: { a: { ...defaultGeneration(), reasoningEffort: "high" as const }, other: { ...defaultGeneration(), temperature: 1 } } };
+    const url = new URL(buildProfileShareUrl("https://app.test/", source));
+    const imported = readSharedProfile(new URLSearchParams(url.hash.slice(1)));
+    expect(imported?.apiKey).toBe(source.apiKey);
+    expect(imported?.name).toBe(source.name);
+    expect(imported?.modelConfigs).toEqual({ a: source.modelConfigs.a });
+    expect(url.search).toBe("");
   });
   it("改 origin 清密钥，改路径保留密钥但使参数覆盖失效", () => {
     const original = { ...profile, modelConfigs: { a: defaultGeneration() } };

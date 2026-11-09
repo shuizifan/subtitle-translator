@@ -18,7 +18,7 @@ export const siteConfig = {
    * 例如把 public/logo.svg 填 "/logo.svg"。
    * 留空（""）则使用下面的文字徽标 logoText。
    */
-  logoSrc: "",
+  logoSrc: "/icon.svg",
 
   /** 文字徽标：当 logoSrc 为空时，显示这个字（建议 1 个汉字或字母） */
   logoText: "字",

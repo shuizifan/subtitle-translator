@@ -8,6 +8,15 @@ const response = (content = "ok", finish_reason = "stop", extra = {}) => new Res
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("API 客户端预算和配置", () => {
+  it("旧无认证配置也统一使用 API Key", async () => {
+    const fetch = vi.fn().mockResolvedValue(response()); vi.stubGlobal("fetch", fetch);
+    const legacy = { ...profile, authMode: "none" as const };
+    expect(resolveLlmConfig(legacy).authMode).toBe("bearer");
+    await createForwardingCaller(legacy)(messages);
+    const body = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(body.authMode).toBe("bearer");
+    expect(body.apiKey).toBe(profile.apiKey);
+  });
   it("不擅自提高手动上限，未知模型不发送温度/思考参数", async () => {
     const fetch = vi.fn().mockResolvedValue(response()); vi.stubGlobal("fetch", fetch);
     await createForwardingCaller({ ...profile, generation: defaultGeneration() })(messages);

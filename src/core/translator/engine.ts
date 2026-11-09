@@ -37,8 +37,8 @@ export interface TranslateResult {
   validation: { rescuedResponses: number; duplicateIds: number; unexpectedIds: number; invalidIds: number };
 }
 export const DEFAULT_ENGINE_OPTIONS: Omit<EngineOptions, "sourceLang" | "targetLang"> = {
-  batchSize: 20, concurrency: 3, maxRetries: 3, contextLines: 3,
-  trailingContextLines: 2, maxCharsPerBatch: 1600,
+  batchSize: 20, concurrency: 3, maxRetries: 3, contextLines: 10,
+  trailingContextLines: 5, maxCharsPerBatch: 1600,
 };
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
