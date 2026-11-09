@@ -54,6 +54,9 @@ export function outputBudget(messages: ChatMessage[], g: GenerationSettings, tar
   if (!Number.isSafeInteger(ceiling) || ceiling < 1 || ceiling > 64000) throw new LlmError("输出额度无效", 400, "invalid-config");
   if (g.outputBudget.mode === "manual") return ceiling;
   if (!Number.isSafeInteger(g.reasoningReserve) || g.reasoningReserve < 0 || g.reasoningReserve >= ceiling) throw new LlmError("自动预算的推理预留无效", 400, "invalid-config");
+  // 默认思考能力未知；不能按译文字数估计推理消耗。
+  // 使用用户已授权的完整额度，手动上限仍然绝不自动提高。
+  if (g.reasoningEffort !== "none") return ceiling;
   const chars = targetItems ? JSON.stringify(targetItems).length : messages.filter(m => m.role === "user").reduce((n, m) => n + m.content.length, 0);
   const estimate = Math.max(512, Math.ceil(chars * 2) + 256 + g.reasoningReserve);
   if (estimate > ceiling) throw new LlmError("估计输出超过当前预算上限，请缩批或调整上限", 400, "budget");

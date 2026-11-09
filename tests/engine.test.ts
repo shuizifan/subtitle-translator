@@ -417,3 +417,68 @@ describe("限流与在途收敛",()=>{
     expect(seen).toEqual([[1,2],[1],[2]]);expect(result.terminalError).toBeUndefined();expect(result.failedIds).toEqual([]);
   });
 });
+
+
+describe("限流后的并发恢复", () => {
+  it("冷却后从减半容量逐步恢复，第二次限流后仍能恢复且不超过配置", async () => {
+    vi.useFakeTimers();
+    try {
+      let running = 0;
+      let calls = 0;
+      let phase = 0;
+      const starts: { time: number; running: number; phase: number }[] = [];
+      const limits: number[] = [];
+      const promise = translateDocument(makeDoc(100), async (_messages, _signal, options) => {
+        const number = ++calls;
+        running++;
+        starts.push({ time: Date.now(), running, phase });
+        try {
+          // One early 429 while five old requests remain in flight; another once
+          // the recovered pool is busy. Old successes must not undo the decrease.
+          await new Promise(resolve => setTimeout(resolve, number === 1 || number === 35 ? 20 : 100));
+          if (number === 1 || number === 35) {
+            phase++;
+            limits.push(Date.now());
+            throw new LlmError("rate limited", 429, "http", 1000);
+          }
+          return JSON.stringify(options!.targetItems!.map(item => ({ id: item.id, text: `译${item.id}` })));
+        } finally { running--; }
+      }, { ...baseOpts, batchSize: 1, concurrency: 6 });
+      await vi.runAllTimersAsync();
+      const result = await promise;
+      expect(result.failedIds).toEqual([]);
+      expect(result.requestCount).toBe(102);
+      expect(limits).toHaveLength(2);
+      for (const phaseNumber of [1, 2]) {
+        const afterLimit = starts.filter(start => start.phase === phaseNumber);
+        const firstTime = afterLimit[0].time;
+        expect(firstTime - limits[phaseNumber - 1]).toBeGreaterThanOrEqual(1000);
+        expect(Math.max(...afterLimit.filter(start => start.time === firstTime).map(start => start.running))).toBe(3);
+        expect(Math.max(...afterLimit.map(start => start.running))).toBe(6);
+        expect(afterLimit.every(start => start.running <= 6)).toBe(true);
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("冷却期间取消会退出全部等待者，不启动新的调用", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      let calls = 0;
+      const promise = translateDocument(makeDoc(30), async (_messages, _signal, options) => {
+        const number = ++calls;
+        await new Promise(resolve => setTimeout(resolve, 20));
+        if (number === 1) throw new LlmError("rate limited", 429, "http", 5000);
+        return JSON.stringify(options!.targetItems!.map(item => ({ id: item.id, text: `译${item.id}` })));
+      }, { ...baseOpts, batchSize: 1, concurrency: 6 }, { signal: controller.signal });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(calls).toBe(6);
+      controller.abort();
+      await vi.runAllTimersAsync();
+      const result = await promise;
+      expect(result.cancelled).toBe(true);
+      expect(calls).toBe(6);
+      expect(result.unprocessedIds.length).toBeGreaterThan(0);
+    } finally { vi.useRealTimers(); }
+  });
+});

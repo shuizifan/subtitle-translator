@@ -202,7 +202,7 @@ export const DEFAULT_PARAMS: TranslateParams = {
   customStyle: "",
   systemPrompt: DEFAULT_STYLE_PROMPT,
   batchSize: 20,
-  concurrency: 3,
+  concurrency: 6,
   maxRetries: 3,
   contextLines: 10,
   trailingContextLines: 5,

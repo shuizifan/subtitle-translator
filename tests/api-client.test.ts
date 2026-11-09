@@ -22,15 +22,23 @@ describe("API 客户端预算和配置", () => {
     await createForwardingCaller({ ...profile, generation: defaultGeneration() })(messages);
     const body = JSON.parse(fetch.mock.calls[0][1].body);
     expect(body.temperature).toBeUndefined(); expect(body.reasoning_effort).toBeUndefined();
-    expect(body.max_tokens).toBe(512);
+    expect(body.max_tokens).toBe(16384);
     expect(effectiveMaxTokens(64, "high")).toBe(64);
   });
   it("自动预算只估计目标而不是上下文，并拒绝突破上限", () => {
-    const g = defaultGeneration(); g.outputBudget.limit = 1024;
+    const g = defaultGeneration(); g.reasoningEffort = "none"; g.outputBudget.limit = 1024;
     expect(outputBudget([{ role: "user", content: "x".repeat(10000) }], g, [{ id: 1, text: "Hi" }])).toBe(512);
     expect(() => outputBudget([{ role: "user", content: "x".repeat(10000) }], g)).toThrowError(expect.objectContaining({ code: "budget" }));
     g.outputBudget.mode = "manual"; expect(outputBudget(messages, g)).toBe(1024);
     g.outputBudget.mode = "provider-default"; expect(outputBudget(messages, g)).toBeUndefined();
+  });
+  it("自动及思考模式使用完整上限，缩批也不压缩推理空间", () => {
+    for (const reasoningEffort of ["auto", "low", "medium", "high"] as const) {
+      const g = { ...defaultGeneration(), reasoningEffort };
+      expect(outputBudget(messages, g, [{ id: 1, text: "Hi" }])).toBe(16384);
+      g.outputBudget.limit = 4096;
+      expect(outputBudget(messages, g, [])).toBe(4096);
+    }
   });
   it("从自动切手动后忽略自动模式的推理预留", () => {
     const g = { ...defaultGeneration(), reasoningReserve: 4096, outputBudget: { mode: "manual" as const, limit: 2048 } };

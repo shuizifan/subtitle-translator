@@ -37,7 +37,7 @@ export interface TranslateResult {
   validation: { rescuedResponses: number; duplicateIds: number; unexpectedIds: number; invalidIds: number };
 }
 export const DEFAULT_ENGINE_OPTIONS: Omit<EngineOptions, "sourceLang" | "targetLang"> = {
-  batchSize: 20, concurrency: 3, maxRetries: 3, contextLines: 10,
+  batchSize: 20, concurrency: 6, maxRetries: 3, contextLines: 10,
   trailingContextLines: 5, maxCharsPerBatch: 1600,
 };
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -98,7 +98,10 @@ export async function translateDocument(doc: SubtitleDocument, caller: LlmCaller
   let requestCount = 0;
   let terminalError: string | undefined;
   let lastError: string | undefined;
-  let concurrency = positiveInt(options.concurrency, 1);
+  const configuredConcurrency = positiveInt(options.concurrency, 1);
+  let concurrency = configuredConcurrency;
+  let rateLimitEpoch = 0;
+  let recoverySuccesses = 0;
   const maxRequests = positiveInt(options.maxRequests, Math.min(10000, batches.length * 4 + 10));
   const validation = { rescuedResponses: 0, duplicateIds: 0, unexpectedIds: 0, invalidIds: 0 };
   const maxRetries = Number.isFinite(options.maxRetries) ? Math.max(0, Math.floor(options.maxRetries)) : 3;
@@ -128,13 +131,18 @@ export async function translateDocument(doc: SubtitleDocument, caller: LlmCaller
     }
     return { before, after };
   };
-  const call = async (part: BatchItem[]) => {
-    while (!signal.aborted && active >= concurrency) await new Promise<void>(resolve => waiters.push(resolve));
-    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-    active++;
-    try {
-      while (cooldownUntil > Date.now()) await sleep(cooldownUntil - Date.now(), signal);
+  const call = async (part: BatchItem[], attempt: number) => {
+    // Acquire only after cooldown, then recheck capacity: sleeping workers do not
+    // reserve slots that would bypass a subsequently reduced concurrency limit.
+    for (;;) {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (cooldownUntil > Date.now()) { await sleep(cooldownUntil - Date.now(), signal); continue; }
+      if (active >= concurrency) { await new Promise<void>(resolve => waiters.push(resolve)); continue; }
+      break;
+    }
+    active++;
+    const startedEpoch = rateLimitEpoch;
+    try {
       if (requestCount >= maxRequests) {
         stop(`已达到本任务 ${maxRequests} 次调用尝试上限，剩余条目未处理`);
         throw new DOMException("Aborted", "AbortError");
@@ -142,7 +150,26 @@ export async function translateDocument(doc: SubtitleDocument, caller: LlmCaller
       requestCount++;
       const { before, after } = contextAround(part);
       const glossary = selectGlossaryFor(options.glossary ?? [], part.map(item => item.text));
-      return await caller(buildMessages(part, { ...options, glossary }, before, after), signal, { purpose: "translation", targetItems: part });
+      const result = await caller(buildMessages(part, { ...options, glossary }, before, after), signal, { purpose: "translation", targetItems: part });
+      // Only requests started after the latest 429 count towards recovery.
+      // Add one slot after a full successful window (at least two requests).
+      if (!signal.aborted && startedEpoch === rateLimitEpoch && Date.now() >= cooldownUntil && concurrency < configuredConcurrency) {
+        recoverySuccesses++;
+        if (recoverySuccesses >= Math.max(2, concurrency)) {
+          concurrency++;
+          recoverySuccesses = 0;
+        }
+      }
+      return result;
+    } catch (error) {
+      recoverySuccesses = 0;
+      if (error instanceof LlmError && error.status === 429) {
+        rateLimitEpoch++;
+        concurrency = Math.max(1, Math.floor(concurrency / 2));
+        const delay = Math.max(error.retryAfterMs ?? 0, Math.min(15000, 500 * 2 ** attempt) + Math.random() * 300);
+        cooldownUntil = Math.max(cooldownUntil, Date.now() + delay);
+      }
+      throw error;
     } finally { active--; wake(); }
   };
   const apply = (part: BatchItem[], content: string) => {
@@ -165,7 +192,7 @@ export async function translateDocument(doc: SubtitleDocument, caller: LlmCaller
     let delay = 300 * (attempt + 1);
     let message = "模型响应存在缺失、空译或重复 ID";
     try {
-      const response = await call(part);
+      const response = await call(part, attempt);
       if (signal.aborted) return;
       const result = typeof response === "string" ? { content: response, finishReason: null, refusal: null } : response;
       if (result.refusal || result.finishReason === "content_filter") {
@@ -186,9 +213,7 @@ export async function translateDocument(doc: SubtitleDocument, caller: LlmCaller
       if (llm?.code === "truncated" && llm.partialResult?.content) remaining = apply(part, llm.partialResult.content);
       if (!shrink) delay = Math.min(15000, 500 * 2 ** attempt) + Math.random() * 300;
       if (llm?.status === 429) {
-        concurrency = Math.max(1, Math.floor(concurrency / 2));
-        delay = Math.max(delay, llm.retryAfterMs ?? 0);
-        cooldownUntil = Math.max(cooldownUntil, Date.now() + delay);
+        delay = Math.max(delay, cooldownUntil - Date.now());
       }
     }
     if (!remaining.length || signal.aborted) return;
@@ -201,7 +226,7 @@ export async function translateDocument(doc: SubtitleDocument, caller: LlmCaller
   emit();
   let next = 0;
   try {
-    await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
+    await Promise.all(Array.from({ length: Math.min(configuredConcurrency, batches.length) }, async () => {
       while (!signal.aborted) {
         const batch = batches[next++];
         if (!batch) return;
