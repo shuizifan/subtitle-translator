@@ -76,13 +76,13 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   return (
     <div ref={barRef} style={{ top: "var(--toolbar-height)" }} className="z-20 border-b border-slate-200 bg-white/95 backdrop-blur sm:sticky dark:border-slate-700 dark:bg-slate-900/95">
-      <div className="workspace-shell grid grid-cols-2 items-end gap-3 py-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(220px,360px)_180px_180px_minmax(0,1fr)]">
+      <div className="workspace-shell grid grid-cols-2 items-end gap-3 py-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] lg:flex lg:min-h-14 lg:items-center lg:gap-5 lg:py-2">
       {/* 翻译服务 */}
-      <div className="col-span-2 min-w-0 sm:col-span-1">
-        <label htmlFor="translation-service" className="mb-1.5 block text-xs text-slate-500 dark:text-slate-400">翻译服务</label>
+      <div className="col-span-2 min-w-0 sm:col-span-1 lg:flex lg:w-[min(36%,380px)] lg:items-center lg:gap-2">
+        <label htmlFor="translation-service" className="mb-1.5 block shrink-0 text-xs text-slate-500 lg:mb-0 dark:text-slate-400">翻译服务</label>
         {profiles.length > 0 ? (
           <select
-            className="input min-w-0 truncate"
+            className="input min-w-0 truncate lg:py-1.5"
             id="translation-service"
             disabled={phase === "translating" || queueRunning}
             value={activeId ?? ""}
@@ -103,10 +103,10 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       </div>
 
       {/* 原始语言 */}
-      <div className="min-w-0">
-        <label htmlFor="source-language" className="mb-1.5 block text-xs text-slate-500 dark:text-slate-400">原文语言{detectedLang && detectedLang !== "auto" && detectedLang === params.sourceLang && <span className="ml-2 text-teal-600 dark:text-teal-400" title="按字幕正文识别，可手动修改">已识别</span>}</label>
+      <div className="min-w-0 lg:flex lg:w-[210px] lg:items-center lg:gap-2">
+        <label htmlFor="source-language" className="mb-1.5 block shrink-0 text-xs text-slate-500 lg:mb-0 dark:text-slate-400">原文语言</label>
         <select
-          className="input min-w-0 truncate"
+          className="input min-w-0 truncate lg:py-1.5"
           id="source-language"
           disabled={phase === "translating" || queueRunning}
           value={params.sourceLang}
@@ -122,10 +122,10 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       </div>
 
       {/* 目标语言 */}
-      <div className="min-w-0">
-        <label htmlFor="target-language" className="mb-1.5 block text-xs text-slate-500 dark:text-slate-400">译文语言</label>
+      <div className="min-w-0 lg:flex lg:w-[210px] lg:items-center lg:gap-2">
+        <label htmlFor="target-language" className="mb-1.5 block shrink-0 text-xs text-slate-500 lg:mb-0 dark:text-slate-400">译文语言</label>
         <select
-          className="input min-w-0 truncate"
+          className="input min-w-0 truncate lg:py-1.5"
           id="target-language"
           disabled={phase === "translating" || queueRunning}
           value={params.targetLang}
@@ -139,7 +139,7 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
         </select>
       </div>
 
-      <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 sm:col-span-3 lg:col-span-1">
+      <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 sm:col-span-3 lg:ml-auto lg:flex-1">
         {error && <span role="alert" className="w-full break-words text-xs text-red-600 lg:max-w-64">{error}</span>}
         {phase === "translating" ? (
           <button type="button" className="btn-secondary w-full sm:w-auto" onClick={cancel}>

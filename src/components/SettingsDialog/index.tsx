@@ -13,21 +13,13 @@ import {
 import { testConnection } from "@/core/translator/llmClient";
 import { defaultGeneration, resolveLlmConfig, buildChatCompletionsUrl, type GenerationSettings } from "@/core/translator/config";
 import { buildProfileShareUrl, updateProfileSafely } from "@/core/translator/profileSharing";
+import { SERVICE_PRESETS } from "@/core/translator/providerPresets";
 import { DEFAULT_STYLE_PROMPT } from "@/core/translator/prompt";
 import { LANGUAGE_CODES, autoDescriptor } from "@/core/naming";
 import { ASS_SIZE_PRESETS, COLOR_SCHEMES, TRANSLATION_WHITE, type AssStyleConfig, type StyleConfig } from "@/core/styling";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 type Tab = "service" | "params" | "prompt" | "bilingual";
-
-// 服务预设：选择后同时更新名称 / Base URL / 模型名
-const SERVICE_PRESETS = [
-  { label: "OpenAI", name: "OpenAI", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-  { label: "DeepSeek", name: "DeepSeek", baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat" },
-  { label: "Moonshot", name: "Moonshot", baseURL: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
-  { label: "智谱", name: "智谱", baseURL: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash" },
-  { label: "Ollama", name: "Ollama", baseURL: "http://localhost:11434/v1", model: "qwen2.5" },
-];
 
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("service");
@@ -73,7 +65,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-2 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-2 sm:p-4">
       <div
         ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-title" tabIndex={-1}
         className="outline-none flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-800"
@@ -148,6 +140,7 @@ function ServiceTab({
 }) {
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string } | "loading">>({});
   const [copied, setCopied] = useState<string | null>(null);
+  const [customModels, setCustomModels] = useState<Record<string, boolean>>({});
   const testVersions = useRef<Record<string, number>>({});
 
   const copyShareLink = async (p: ApiProfile) => {
@@ -160,9 +153,14 @@ function ServiceTab({
     }
   };
 
-  const updateProfile = (id: string, p: Partial<ApiProfile>) => {
+  const updateProfile = (id: string, p: Partial<ApiProfile>, generation?: Partial<GenerationSettings>) => {
     testVersions.current[id] = (testVersions.current[id] ?? 0) + 1;
-    patch({ apiProfiles: draft.apiProfiles.map((x) => x.id === id ? updateProfileSafely(x, p) : x) });
+    patch({ apiProfiles: draft.apiProfiles.map((x) => {
+      if (x.id !== id) return x;
+      const next = updateProfileSafely(x, p);
+      if (generation && !Object.hasOwn(next.modelConfigs ?? {}, next.model)) next.modelConfigs = { ...next.modelConfigs, [next.model]: { ...defaultGeneration(), ...generation } };
+      return next;
+    }) });
     setResults((r) => { const next = { ...r }; delete next[id]; return next; });
   };
 
@@ -172,6 +170,7 @@ function ServiceTab({
   };
 
   const removeProfile = (id: string) => {
+    if (!window.confirm("删除这个翻译服务？")) return;
     const left = draft.apiProfiles.filter((x) => x.id !== id);
     patch({ apiProfiles: left, activeProfileId: draft.activeProfileId === id ? (left[0]?.id ?? null) : draft.activeProfileId });
   };
@@ -194,11 +193,14 @@ function ServiceTab({
         <p className="text-sm text-slate-500 dark:text-slate-400">还没有翻译服务。添加一个 OpenAI 兼容服务（DeepSeek / Kimi / OpenAI / 本地 Ollama 等）。</p>
       )}
 
-      {draft.apiProfiles.map((p) => (
+      {draft.apiProfiles.map((p) => {
+        const provider = matchProvider(p.baseURL);
+        const isCustom = customModels[p.id] || !provider?.models.some(m => m.id === p.model);
+        return (
         <div
           key={p.id}
           className={`rounded-xl border p-4 ${
-            draft.activeProfileId === p.id ? "border-slate-900 dark:border-slate-100" : "border-slate-200 dark:border-slate-700"
+            draft.activeProfileId === p.id ? "border-teal-600/40 bg-white ring-1 ring-teal-600/10 dark:border-teal-400/40 dark:bg-slate-800" : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
           }`}
         >
           <div className="mb-3 flex items-center justify-between">
@@ -211,39 +213,47 @@ function ServiceTab({
             </button>
           </div>
 
-          <div className="mb-3 flex flex-wrap gap-2">
-            {SERVICE_PRESETS.map((sp) => (
-              <button type="button"
-                key={sp.label}
-                className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                onClick={() => updateProfile(p.id, { name: sp.name, baseURL: sp.baseURL, model: sp.model, apiKey: "", modelConfigs: {}, authMode: "bearer" })}
-              >
-                {sp.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="label">名称</label>
-              <input data-1p-ignore="true" data-lpignore="true" className="input" value={p.name} onChange={(e) => updateProfile(p.id, { name: e.target.value })} />
+              <label htmlFor={`provider-${p.id}`} className="label">服务商</label>
+              <select id={`provider-${p.id}`} className="input" value={provider?.label ?? "custom"} onChange={(e) => {
+                const selected = SERVICE_PRESETS.find(sp => sp.label === e.target.value);
+                setCustomModels(old => ({ ...old, [p.id]: !selected }));
+                if (selected) updateProfile(p.id, { name: selected.name, baseURL: selected.baseURL, model: selected.model, authMode: "bearer" }, selected.models.find(m => m.id === selected.model)?.generation);
+                else updateProfile(p.id, { baseURL: "", model: "" });
+              }}>
+                <option value="custom">自定义服务</option>
+                {SERVICE_PRESETS.map(sp => <option key={sp.label} value={sp.label}>{sp.label}</option>)}
+              </select>
             </div>
             <div>
-              <label className="label">模型名</label>
-              <input data-1p-ignore="true" data-lpignore="true" className="input" placeholder="gpt-4o-mini / deepseek-chat" value={p.model} onChange={(e) => updateProfile(p.id, { model: e.target.value })} />
+              <label htmlFor={`name-${p.id}`} className="label">名称</label>
+              <input id={`name-${p.id}`} data-1p-ignore="true" className="input" value={p.name} onChange={(e) => updateProfile(p.id, { name: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
-              <label className="label">Base URL</label>
+              <label htmlFor={`model-${p.id}`} className="label">模型</label>
+              <select id={`model-${p.id}`} className="input" value={isCustom ? "custom" : p.model} onChange={(e) => {
+                const custom = e.target.value === "custom";
+                setCustomModels(old => ({ ...old, [p.id]: custom }));
+                if (!custom) updateProfile(p.id, { model: e.target.value }, provider?.models.find(m => m.id === e.target.value)?.generation);
+              }}>
+                <option value="custom">自定义模型</option>
+                {provider?.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+              {isCustom && <input aria-label="自定义模型 ID" data-1p-ignore="true" className="input mt-2" placeholder="输入模型 ID" value={p.model} onChange={(e) => updateProfile(p.id, { model: e.target.value })} />}
+              {provider?.note && <p className="mt-1.5 text-xs text-slate-500">{provider.note}</p>}
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label" title={endpointPreview(p.baseURL)}>Base URL</label>
               <input data-1p-ignore="true" data-lpignore="true" className="input" placeholder="https://api.deepseek.com/v1" value={p.baseURL} onChange={(e) => updateProfile(p.id, { baseURL: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
-              <p className="mb-2 break-all text-xs text-slate-500">请求地址：{endpointPreview(p.baseURL)}</p>
               <label className="label">API Key</label>
               <input data-1p-ignore="true" data-lpignore="true" className="input" type="password" autoComplete="off" placeholder="sk-..." value={p.apiKey} onChange={(e) => updateProfile(p.id, { apiKey: e.target.value })} />
             </div>
           </div>
 
-          <button type="button" className="mt-2 text-xs text-red-500 hover:underline" onClick={() => updateProfile(p.id, { apiKey: "" })}>清除密钥</button>
+          <button type="button" className="mt-2 text-xs text-slate-500 hover:text-red-600 disabled:opacity-40" disabled={!p.apiKey} onClick={() => { if (window.confirm("清除这个服务的 API Key？")) updateProfile(p.id, { apiKey: "" }); }}>清除密钥</button>
           <GenerationFields profile={p} onChange={(generation) => updateProfile(p.id, { modelConfigs: { ...p.modelConfigs, [p.model]: generation } })} />
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button type="button" className="btn-secondary" onClick={() => test(p, "connectivity")} disabled={!p.baseURL || !p.apiKey || !p.model || results[p.id] === "loading"}>
@@ -258,7 +268,7 @@ function ServiceTab({
             )}
           </div>
         </div>
-      ))}
+      );})}
 
       <button type="button" className="btn-secondary" onClick={addProfile}>
         + 添加服务
@@ -266,6 +276,20 @@ function ServiceTab({
       <p className="text-xs text-slate-400">密钥保存在此浏览器；分享链接包含密钥。</p>
     </div>
   );
+}
+
+function matchProvider(baseURL: string) {
+  try {
+    const url = new URL(baseURL);
+    return SERVICE_PRESETS.find(sp => {
+      const preset = new URL(sp.baseURL);
+      if (url.protocol !== preset.protocol) return false;
+      const path = url.pathname.replace(/\/+$/, "");
+      if (sp.label === "DeepSeek") return url.host === preset.host && ["", "/v1"].includes(path);
+      if (sp.label === "Moonshot") return ["api.moonshot.cn", "api.moonshot.ai"].includes(url.host) && path === "/v1";
+      return url.host === preset.host && path === preset.pathname.replace(/\/+$/, "");
+    });
+  } catch { return undefined; }
 }
 
 function endpointPreview(baseURL: string): string {
@@ -279,7 +303,7 @@ function GenerationFields({ profile, onChange }: { profile: ApiProfile; onChange
   const patch = (value: Partial<GenerationSettings>) => onChange({ ...settings, ...value });
   return (
     <details className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-      <summary className="cursor-pointer text-sm font-medium">模型参数 · {profile.model || "未填写模型"}</summary>
+      <summary className="cursor-pointer text-sm font-medium">模型参数</summary>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label">温度</label>

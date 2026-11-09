@@ -65,30 +65,28 @@ export function SubtitleTable() {
     requestAnimationFrame(() => row?.scrollIntoView({ block: "center", behavior: "instant" }));
   };
   const qaMap = new Map(qaFindings.map((f) => [f.id, f.codes]));
-  const translated = document.entries.filter((e) => e.translatedText).length;
   const excluded = document.entries.filter((e) => e.excluded).length;
   const defaultBaseName = deriveBaseName(fileName ?? "subtitle");
 
   return (
-    <section className="workspace-shell min-w-0 pb-8 pt-4" aria-label="字幕编辑区">
-      <div className="mb-4 min-w-0">
+    <section className="workspace-shell min-w-0 pb-8 pt-3" aria-label="字幕编辑区">
+      <div className="mb-3 min-w-0">
         <h1 className="break-words text-lg font-semibold leading-7 text-slate-900 [overflow-wrap:anywhere] dark:text-slate-100">{fileName}</h1>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
           <span>{document.entries.length} 行字幕</span>
-          <span>已译 {translated} 行</span>
           {excluded > 0 && <span>已排除 {excluded} 行</span>}
           {navigableFailures.length > 0 && <span className="text-red-600 dark:text-red-400">失败 {navigableFailures.length} 行</span>}
           {detectedLang && detectedLang !== "auto" && <span>源语言 {detectedLang}</span>}
         </div>
       </div>
 
-      <div className="mb-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+      <div className="mb-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
         <label htmlFor="export-base-name" className="col-span-2 text-xs text-slate-500 sm:col-span-1 dark:text-slate-400">导出文件名</label>
         <input
           id="export-base-name"
           data-1p-ignore="true"
           autoComplete="off"
-          className="input min-w-0"
+          className="input min-w-0 sm:py-1.5"
           value={exportBaseName}
           onChange={(event) => setExportBaseName(event.target.value)}
           aria-describedby="export-suffix-preview"
@@ -118,11 +116,11 @@ export function SubtitleTable() {
       )}
 
       <div ref={tableRef} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-        <div className="hidden grid-cols-[40px_126px_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 sm:grid dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
-          <div>序号</div>
-          <div>时间</div>
+        <div className="hidden grid-cols-[36px_142px_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-2.5 text-xs font-medium text-slate-500 sm:grid dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
+          <div className="text-right">序号</div>
+          <div className="text-right">时间</div>
           <div>原文</div>
-          <div>译文（可编辑）</div>
+          <div className="pl-[9px]">译文<span className="ml-2 font-normal text-slate-400">点击编辑</span></div>
         </div>
         <div>
           {document.entries.map((e) => (
@@ -194,7 +192,7 @@ const Row = memo(function Row({
       data-subtitle-id={id}
       tabIndex={-1}
       style={ROW_CV}
-      className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-slate-100 px-4 py-3 text-sm leading-6 sm:py-2 sm:grid-cols-[40px_126px_minmax(0,1fr)_minmax(0,1fr)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400 dark:border-slate-700/60 ${
+      className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-slate-100 px-4 py-3 text-[15px] leading-6 sm:py-2 sm:grid-cols-[36px_142px_minmax(0,1fr)_minmax(0,1fr)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400 dark:border-slate-700/60 ${
         activeFailure
           ? "bg-red-50 ring-2 ring-inset ring-red-300 dark:bg-red-900/20 dark:ring-red-500/60"
           : excluded
@@ -202,11 +200,11 @@ const Row = memo(function Row({
           : "hover:bg-slate-50/60 dark:hover:bg-slate-700/30"
       }`}
     >
-      <div className="pt-1 text-xs tabular-nums text-slate-500 dark:text-slate-400">{id}</div>
-      <div className="flex items-center gap-1.5 pt-1 text-xs tabular-nums text-slate-500 sm:items-start sm:justify-start sm:gap-1 dark:text-slate-400" aria-label={`时间 ${shortTime(start)} 至 ${shortTime(end)}`}>
+      <div className="pt-1 text-xs tabular-nums text-slate-500 sm:text-right dark:text-slate-400">{id}</div>
+      <div className="flex items-center gap-1.5 pt-1 text-[12px] tabular-nums text-slate-500 sm:items-start sm:justify-end sm:gap-1 dark:text-slate-400" aria-label={`时间 ${shortTime(start)} 至 ${shortTime(end)}`}>
         <span>{shortTime(start)}</span><span aria-hidden="true">–</span><span>{shortTime(end)}</span>
       </div>
-      <div className={`col-span-2 min-w-0 whitespace-pre-wrap break-words pt-1 [overflow-wrap:anywhere] sm:col-span-1 ${excluded ? "text-slate-400 line-through decoration-slate-300" : "text-slate-600 dark:text-slate-300"}`}>
+      <div className={`col-span-2 min-w-0 whitespace-pre-wrap break-words pt-[5px] [overflow-wrap:anywhere] sm:col-span-1 ${excluded ? "text-slate-400 line-through decoration-slate-300" : "text-slate-700 dark:text-slate-300"}`}>
         <span className="mb-1 block text-xs text-slate-500 sm:hidden dark:text-slate-400">原文</span>
         {original}
       </div>

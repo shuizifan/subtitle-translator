@@ -29,7 +29,7 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   return (
     <header ref={headerRef} className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
-      <div className="workspace-shell flex flex-wrap items-center gap-x-5 gap-y-3 py-3">
+      <div className="workspace-shell flex flex-wrap items-center gap-x-5 gap-y-2 py-2.5 lg:h-16 lg:py-0">
 
       <div className="flex items-center gap-3">
         {siteConfig.logoSrc ? (

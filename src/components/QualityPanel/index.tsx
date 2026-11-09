@@ -16,6 +16,8 @@ type Section = "glossary" | "qa" | "cleanup" | null;
  */
 export function QualityPanel() {
   const [open, setOpen] = useState<Section>(null);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const diagnostics = useRequestDiagnostics();
   const glossary = useAppStore((s) => s.glossary);
   const candidates = useAppStore((s) => s.glossaryCandidates);
   const glossaryStatus = useAppStore((s) => s.glossaryStatus);
@@ -33,10 +35,10 @@ export function QualityPanel() {
       type="button"
       aria-expanded={open === key}
       onClick={() => toggle(key)}
-      className={`flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
+      className={`flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
         open === key
-          ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
-          : "border-slate-300 text-slate-600 hover:bg-white dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+          ? "border-teal-200 bg-teal-50 text-teal-800 dark:border-teal-800 dark:bg-teal-900/30 dark:text-teal-200"
+          : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
       }`}
     >
       <span>{label}</span>
@@ -45,7 +47,7 @@ export function QualityPanel() {
   );
 
   return (
-    <div className="workspace-shell pt-4">
+    <div className="workspace-shell pt-3">
       <div className="flex flex-wrap items-center gap-2">
         {chip(
           "glossary",
@@ -78,12 +80,15 @@ export function QualityPanel() {
           cleanupMarks.length > 0 ? "text-sky-600" : "text-slate-400",
         )}
         {phase === "translating" && <span className="text-xs text-slate-400">翻译进行中，工具暂不可用</span>}
+        {diagnostics.requests > 0 && <button type="button" aria-expanded={diagnosticsOpen} onClick={() => setDiagnosticsOpen(v => !v)} className="ml-auto flex min-h-8 items-center gap-1.5 text-xs tabular-nums text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
+          <span aria-hidden="true">{diagnosticsOpen ? "▾" : "▸"}</span>请求诊断<span className={diagnostics.failedRequests ? "text-amber-600" : "text-slate-400"}>{diagnostics.requests} 次{diagnostics.failedRequests ? ` / ${diagnostics.failedRequests} 异常` : ""}</span>
+        </button>}
       </div>
 
       {open === "glossary" && <GlossarySection />}
       {open === "qa" && <QaSection />}
       {open === "cleanup" && <CleanupSection />}
-      <RequestDiagnostics />
+      {diagnosticsOpen && <RequestDiagnostics />}
     </div>
   );
 }
@@ -92,14 +97,13 @@ function RequestDiagnostics() {
   const d = useRequestDiagnostics();
   const busy = useAppStore((s) => s.phase === "translating" || s.queueRunning || s.glossaryStatus === "building");
   if (!d.requests) return null;
-  return <details className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-    <summary className="cursor-pointer">本页累计请求诊断 · {d.requests} 次尝试 · {d.failedRequests} 次异常</summary>
+  return <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
     <p className="mt-2">已知输入 {d.promptTokens} token · 已知输出 {d.completionTokens} token（其中已知推理 {d.reasoningTokens}）· {d.unknownUsageRequests} 次用量未知。未提供价格，不估算费用。</p>
     <p>记录浏览器调用尝试（含本地校验失败）；代理参数兼容重发不单独计数。推理量属于输出量，不重复相加。</p>
     <button className="mt-1 underline" disabled={busy} onClick={resetRequestDiagnostics}>清空本页诊断统计</button>
     {d.last && <><p>最近响应：{d.last.finishReason ?? "未提供完成原因"} · {d.last.durationMs ?? "未知"} ms · 请求 ID：{d.last.requestId ?? "未提供"}</p>
       <pre className="mt-1 overflow-auto whitespace-pre-wrap">{JSON.stringify(d.last.sentParameters, null, 2)}</pre></>}
-  </details>;
+  </div>;
 }
 
 function Card({ children }: { children: React.ReactNode }) {
