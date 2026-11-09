@@ -40,12 +40,14 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   useEffect(() => {
     const bar = barRef.current;
     if (!bar) return;
-    const observer = new ResizeObserver(() => {
-      window.document.documentElement.style.setProperty("--control-bar-height", `${bar.getBoundingClientRect().height}px`);
-    });
+    const measure = () => window.document.documentElement.style.setProperty("--control-bar-height", window.innerWidth >= 640 ? `${bar.getBoundingClientRect().height}px` : "0px");
+    measure();
+    const observer = new ResizeObserver(measure);
+    window.addEventListener("resize", measure);
     observer.observe(bar);
     return () => {
       observer.disconnect();
+      window.removeEventListener("resize", measure);
       window.document.documentElement.style.removeProperty("--control-bar-height");
     };
   }, []);
@@ -73,13 +75,16 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const canTranslate = !!active && !!active.baseURL && !!active.apiKey.trim() && !!active.model && remaining > 0 && !queueRunning && !glossaryBuilding;
 
   return (
-    <div ref={barRef} style={{ top: "var(--toolbar-height)" }} className="sticky z-20 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-800/95">
+    <div ref={barRef} style={{ top: "var(--toolbar-height)" }} className="z-20 border-b border-slate-200 bg-white/95 backdrop-blur sm:sticky dark:border-slate-700 dark:bg-slate-900/95">
+      <div className="workspace-shell grid grid-cols-2 items-end gap-3 py-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(220px,360px)_180px_180px_minmax(0,1fr)]">
       {/* 翻译服务 */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-slate-500 dark:text-slate-400">翻译服务</span>
+      <div className="col-span-2 min-w-0 sm:col-span-1">
+        <label htmlFor="translation-service" className="mb-1.5 block text-xs text-slate-500 dark:text-slate-400">翻译服务</label>
         {profiles.length > 0 ? (
           <select
-            className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+            className="input min-w-0 truncate"
+            id="translation-service"
+            disabled={phase === "translating" || queueRunning}
             value={activeId ?? ""}
             onChange={(e) => selectProfile(e.target.value)}
           >
@@ -91,17 +96,19 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
             ))}
           </select>
         ) : (
-          <button className="rounded-lg border border-dashed border-slate-400 px-2 py-1.5 text-sm text-slate-500 dark:border-slate-500 dark:text-slate-400" onClick={onOpenSettings}>
+          <button type="button" className="w-full rounded-lg border border-dashed border-slate-400 px-2 py-2 text-sm text-slate-500 dark:border-slate-500 dark:text-slate-400" onClick={onOpenSettings}>
             + 添加服务
           </button>
         )}
       </div>
 
       {/* 原始语言 */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-slate-500 dark:text-slate-400">原始语言</span>
+      <div className="min-w-0">
+        <label htmlFor="source-language" className="mb-1.5 block text-xs text-slate-500 dark:text-slate-400">原文语言{detectedLang && detectedLang !== "auto" && detectedLang === params.sourceLang && <span className="ml-2 text-teal-600 dark:text-teal-400" title="按字幕正文识别，可手动修改">已识别</span>}</label>
         <select
-          className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+          className="input min-w-0 truncate"
+          id="source-language"
+          disabled={phase === "translating" || queueRunning}
           value={params.sourceLang}
           onChange={(e) => setSourceLang(e.target.value)}
         >
@@ -111,18 +118,16 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
             </option>
           ))}
         </select>
-        {detectedLang && detectedLang !== "auto" && detectedLang === params.sourceLang && (
-          <span className="text-xs text-emerald-600 dark:text-emerald-400" title="按字幕正文自动判定，可手动改">
-            自动判定
-          </span>
-        )}
+
       </div>
 
       {/* 目标语言 */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-slate-500 dark:text-slate-400">目标语言</span>
+      <div className="min-w-0">
+        <label htmlFor="target-language" className="mb-1.5 block text-xs text-slate-500 dark:text-slate-400">译文语言</label>
         <select
-          className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+          className="input min-w-0 truncate"
+          id="target-language"
+          disabled={phase === "translating" || queueRunning}
           value={params.targetLang}
           onChange={(e) => setTargetLang(e.target.value)}
         >
@@ -134,14 +139,14 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
         </select>
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
-        {error && <span className="text-xs text-red-600">{error}</span>}
+      <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 sm:col-span-3 lg:col-span-1">
+        {error && <span role="alert" className="w-full break-words text-xs text-red-600 lg:max-w-64">{error}</span>}
         {phase === "translating" ? (
-          <button className="btn-secondary" onClick={cancel}>
-            取消
+          <button type="button" className="btn-secondary w-full sm:w-auto" onClick={cancel}>
+            停止翻译
           </button>
         ) : (
-          <button className="btn-primary" onClick={start} disabled={!canTranslate}>
+          <button type="button" className="btn-primary w-full whitespace-nowrap sm:w-auto" onClick={start} disabled={!canTranslate}>
             {phase === "done" || phase === "parsed"
               ? remaining > 0
                 ? phase === "done"
@@ -151,6 +156,7 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
               : "开始翻译"}
           </button>
         )}
+      </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useAppStore } from "@/store";
 import { Toolbar } from "@/components/Toolbar";
 import { ControlBar } from "@/components/ControlBar";
@@ -18,6 +18,7 @@ export default function Home() {
   const bilingualWarning = useAppStore((s) => s.bilingualWarning);
   const setBilingualWarning = useAppStore((s) => s.setBilingualWarning);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const urlImport = useUrlImport();
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
@@ -70,7 +71,7 @@ export default function Home() {
             <EmptyState />
           )}
 
-          <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <SettingsDialog open={settingsOpen} onClose={closeSettings} />
         </main>
       </GlobalDropzone>
     </SubtitleLoaderProvider>

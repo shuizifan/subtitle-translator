@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useAppStore } from "@/store";
 import { useFileIntake } from "@/lib/useFileIntake";
 import { useExport } from "@/lib/useExport";
@@ -16,9 +16,21 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const dirInput = useRef<HTMLInputElement>(null);
 
   const canExport = hasDoc;
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const measure = () => document.documentElement.style.setProperty("--toolbar-height", `${header.getBoundingClientRect().height}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty("--toolbar-height"); };
+  }, []);
 
   return (
-    <header className="sticky top-0 z-30 grid h-28 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 border-b border-slate-200 bg-white/90 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90 xl:flex xl:h-14 xl:justify-between xl:py-0">
+    <header ref={headerRef} className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+      <div className="workspace-shell flex flex-wrap items-center gap-x-5 gap-y-3 py-3">
+
       <div className="flex items-center gap-3">
         {siteConfig.logoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -31,9 +43,8 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
         <span className="text-base font-semibold text-slate-900 dark:text-slate-100">{siteConfig.name}</span>
       </div>
 
-      <TranslationProgress />
-
-      <div className="col-span-2 flex min-w-0 items-center gap-2 overflow-x-auto [&>*]:shrink-0">
+      <div className="order-3 flex w-full min-w-0 items-center gap-2 lg:order-2 lg:ml-auto lg:w-auto lg:flex-1">
+        <div className="mr-auto min-w-0 flex-1 lg:mx-auto lg:max-w-sm"><TranslationProgress /></div>
         <input
           ref={fileInput}
           type="file"
@@ -60,28 +71,48 @@ export function Toolbar({ onOpenSettings }: { onOpenSettings: () => void }) {
             e.target.value = "";
           }}
         />
-        <button className="btn-secondary" onClick={() => fileInput.current?.click()}>
-          打开文件
-        </button>
-        <button className="btn-secondary" onClick={() => dirInput.current?.click()} title="批量：选择整个文件夹">
-          打开文件夹
-        </button>
-        <button className="btn-secondary" onClick={exportTranslated} disabled={!canExport}>
-          导出仅译文
-        </button>
-        <button className="btn-primary" onClick={exportBilingual} disabled={!canExport}>
-          导出双语
-        </button>
+        <ActionMenu label="打开">
+          <button type="button" className={menuItem} onClick={() => fileInput.current?.click()}>打开文件</button>
+          <button type="button" className={menuItem} onClick={() => dirInput.current?.click()}>打开文件夹</button>
+        </ActionMenu>
+        <ActionMenu label="导出" disabled={!canExport}>
+          <button type="button" className={menuItem} onClick={exportBilingual} disabled={!canExport}>导出双语</button>
+          <button type="button" className={menuItem} onClick={exportTranslated} disabled={!canExport}>导出仅译文</button>
+        </ActionMenu>
+      </div>
+      <div className="order-2 ml-auto flex shrink-0 items-center gap-2 lg:order-3 lg:ml-0">
         <ThemeToggle />
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+          type="button"
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
           onClick={onOpenSettings}
           title="设置"
           aria-label="设置"
         >
-          ⚙
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="m9 3-.6 2.2-2 .9-2.1-.6-2 3.5 1.5 1.6v2.8L2.3 15l2 3.5 2.1-.6 2 .9L9 21h4l.6-2.2 2-.9 2.1.6 2-3.5-1.5-1.6v-2.8L19.7 9l-2-3.5-2.1.6-2-.9L13 3Z"/><circle cx="11" cy="12" r="3"/></svg>
         </button>
       </div>
+      </div>
     </header>
+  );
+}
+
+const menuItem = "block w-full whitespace-nowrap rounded-md px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none dark:text-slate-200 dark:hover:bg-slate-700 dark:focus-visible:bg-slate-700";
+
+function ActionMenu({ label, disabled, children }: { label: string; disabled?: boolean; children: React.ReactNode }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  return (
+    <details ref={ref} className="relative shrink-0" onKeyDown={(event) => {
+      if (event.key === "Escape" && ref.current) { ref.current.open = false; ref.current.querySelector("summary")?.focus(); }
+    }} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null) && ref.current) ref.current.open = false;
+    }}>
+      <summary aria-disabled={disabled} onClick={(event) => { if (disabled) event.preventDefault(); }} className={`btn-secondary list-none cursor-pointer [&::-webkit-details-marker]:hidden ${disabled ? "cursor-not-allowed opacity-40" : ""}`}>
+        {label}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m4 6 4 4 4-4" /></svg>
+      </summary>
+      <div className="absolute right-0 top-full z-40 mt-2 min-w-36 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-800" onClick={() => { if (ref.current) ref.current.open = false; }}>
+        {children}
+      </div>
+    </details>
   );
 }

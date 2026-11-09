@@ -46,7 +46,7 @@ export function QueuePanel() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl px-4 pt-4">
+    <div className="workspace-shell pt-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-medium text-slate-900 dark:text-slate-100">

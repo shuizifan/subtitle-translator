@@ -32,12 +32,32 @@ const SERVICE_PRESETS = [
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("service");
   const [draft, setDraft] = useState<SettingsSnapshot | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const applySettings = useAppStore((s) => s.applySettings);
 
   // 打开时从 store 快照一份草稿；编辑只动草稿，保存才写回。
   useEffect(() => {
     if (open) setDraft(snapshotSettings(useAppStore.getState()));
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const timer = requestAnimationFrame(() => dialogRef.current?.focus());
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex="0"]') ?? []).filter(el => el.getClientRects().length > 0);
+      const first = controls[0], last = controls.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement) || document.activeElement === dialogRef.current)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current?.contains(document.activeElement) || document.activeElement === dialogRef.current)) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => { cancelAnimationFrame(timer); document.removeEventListener("keydown", handleKey); document.body.style.overflow = overflow; previous?.focus(); };
+  }, [open, onClose]);
 
   if (!open || !draft) return null;
 
@@ -53,27 +73,29 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-2 sm:p-4" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-800"
+        ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-title" tabIndex={-1}
+        className="outline-none flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">设置</h2>
+          <h2 id="settings-title" className="text-base font-semibold text-slate-900 dark:text-slate-100">设置</h2>
           <button type="button" className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" onClick={onClose} aria-label="关闭">
             ✕
           </button>
         </div>
 
-        <div className="flex gap-1 border-b border-slate-200 px-4 pt-2 dark:border-slate-700">
+        <div className="grid grid-cols-2 gap-1 border-b border-slate-200 px-3 pt-2 sm:flex sm:px-4 dark:border-slate-700">
           {([
             ["service", "翻译服务"],
             ["params", "翻译参数"],
-            ["prompt", "高级 · 提示词"],
+            ["prompt", "提示词"],
             ["bilingual", "双语与导出"],
           ] as [Tab, string][]).map(([key, label]) => (
             <button type="button"
               key={key}
+              aria-pressed={tab === key}
               className={`rounded-t-lg px-3 py-2 text-sm ${
                 tab === key
                   ? "border-b-2 border-slate-900 font-medium text-slate-900 dark:border-slate-100 dark:text-slate-100"
@@ -86,7 +108,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
           ))}
         </div>
 
-        <div className="overflow-auto p-5">
+        <div className="min-h-0 overflow-auto overscroll-contain p-3 sm:p-5">
           {tab === "service" && <ServiceTab draft={draft} patch={patch} />}
           {tab === "params" && <ParamsTab params={draft.params} setParams={setParams} />}
           {tab === "prompt" && <PromptTab params={draft.params} setParams={setParams} />}
@@ -104,7 +126,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
-          <span className="mr-auto text-xs text-slate-400">修改后需点「保存」才生效</span>
+          <span className="mr-auto text-xs text-slate-400">保存后生效</span>
           <button type="button" className="btn-secondary" onClick={onClose}>
             关闭
           </button>

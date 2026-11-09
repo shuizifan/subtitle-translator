@@ -30,8 +30,10 @@ export function QualityPanel() {
   const chip = (key: Exclude<Section, null>, label: string, badge: string, tone: string) => (
     <button
       key={key}
+      type="button"
+      aria-expanded={open === key}
       onClick={() => toggle(key)}
-      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
+      className={`flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
         open === key
           ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
           : "border-slate-300 text-slate-600 hover:bg-white dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -43,7 +45,7 @@ export function QualityPanel() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl px-4 pt-4">
+    <div className="workspace-shell pt-4">
       <div className="flex flex-wrap items-center gap-2">
         {chip(
           "glossary",

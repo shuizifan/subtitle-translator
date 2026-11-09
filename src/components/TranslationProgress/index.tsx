@@ -29,13 +29,13 @@ export function TranslationProgress() {
   const filled = Math.floor(status.percent / 5);
 
   return (
-    <div className="ml-auto w-full max-w-[280px] min-w-0 xl:mx-4 xl:w-[260px] xl:shrink-0" data-translation-status={status.tone}>
+    <div className="w-full min-w-0" data-translation-status={status.tone}>
       <div className={`flex items-center justify-between gap-2 text-xs font-semibold ${tone.text}`}>
         <span className="flex min-w-0 items-center gap-1.5">
           <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.fill} ${status.active ? "motion-safe:animate-pulse" : ""}`} />
           <span className="truncate" role="status">{status.label}</span>
         </span>
-        <span className="shrink-0 text-base font-bold tabular-nums">{status.indeterminate ? "…" : `${status.percent}%`}</span>
+        <span className="shrink-0 text-sm font-semibold tabular-nums">{status.indeterminate ? "…" : `${status.percent}%`}</span>
       </div>
       <div
         className="mt-1 flex gap-[3px]"
@@ -54,7 +54,7 @@ export function TranslationProgress() {
           />
         ))}
       </div>
-      <div className="mt-1 truncate text-[10px] leading-tight tabular-nums text-slate-500 dark:text-slate-400" title={status.detail}>{status.detail}</div>
+      <div className="mt-1 truncate text-[11px] leading-tight tabular-nums text-slate-500 dark:text-slate-400" title={status.detail}>{status.detail}</div>
     </div>
   );
 }

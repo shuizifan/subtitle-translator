@@ -11,7 +11,7 @@ export function EmptyState() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-56px)] max-w-2xl flex-col items-center justify-center px-4">
+    <div className="mx-auto flex min-h-[calc(100dvh-var(--toolbar-height))] max-w-2xl flex-col items-center justify-center px-4">
       <input
         ref={fileInput}
         type="file"
@@ -27,14 +27,14 @@ export function EmptyState() {
       <button
         type="button"
         onClick={() => fileInput.current?.click()}
-        className="flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white px-8 py-20 text-center transition hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-slate-500"
+        className="flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white px-5 py-14 sm:px-8 sm:py-20 text-center transition hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-slate-500"
       >
-        <div className="mb-4 text-5xl">🎬</div>
-        <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">拖拽字幕文件到这里，或点击选择</p>
+        <svg aria-hidden="true" className="mb-5 h-12 w-12 text-teal-600" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2"><rect x="7" y="9" width="34" height="28" rx="5"/><path d="M14 21h20M14 28h9m5 0h6M18 41h12"/></svg>
+        <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">拖入字幕，开始翻译</p>
         <p className="mt-2 text-sm text-slate-400">
-          支持拖到页面任意位置 · .srt / .ass / .vtt / .lrc · 单文件最大 20 MB
+          点击选择文件 · 支持 SRT / ASS / VTT / LRC
         </p>
-        <p className="mt-1 text-sm text-slate-400">一次拖入多个文件或整个文件夹＝自动进批量队列</p>
+        <p className="mt-1 text-sm text-slate-400">可批量拖入文件或文件夹，单文件最大 20 MB</p>
       </button>
 
       {lowConfidence && (
@@ -55,7 +55,7 @@ export function EmptyState() {
       )}
 
       <p className="mt-8 text-center text-xs text-slate-400">
-        无数据库 · 无账号 · 密钥仅存本地浏览器并经转发路由穿透
+        字幕与译文仅保留在当前页面，请及时导出。
       </p>
     </div>
   );
