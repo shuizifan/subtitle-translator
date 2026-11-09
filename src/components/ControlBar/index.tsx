@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { getActiveProfile, useAppStore } from "@/store";
 import { useTranslator } from "@/lib/useTranslator";
 
@@ -36,21 +35,6 @@ const TARGET_LANGS = [
 ];
 
 export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const barRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const bar = barRef.current;
-    if (!bar) return;
-    const measure = () => window.document.documentElement.style.setProperty("--control-bar-height", window.innerWidth >= 640 ? `${bar.getBoundingClientRect().height}px` : "0px");
-    measure();
-    const observer = new ResizeObserver(measure);
-    window.addEventListener("resize", measure);
-    observer.observe(bar);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-      window.document.documentElement.style.removeProperty("--control-bar-height");
-    };
-  }, []);
   const profiles = useAppStore((s) => s.apiProfiles);
   const activeId = useAppStore((s) => s.activeProfileId);
   const selectProfile = useAppStore((s) => s.selectProfile);
@@ -60,7 +44,6 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const phase = useAppStore((s) => s.phase);
   const queueRunning = useAppStore((s) => s.queueRunning);
   const glossaryBuilding = useAppStore((s) => s.glossaryStatus === "building");
-  const detectedLang = useAppStore((s) => s.detectedLang);
   const document = useAppStore((s) => s.document);
   useAppStore((s) => s.docVersion);
 
@@ -75,10 +58,10 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const canTranslate = !!active && !!active.baseURL && !!active.apiKey.trim() && !!active.model && remaining > 0 && !queueRunning && !glossaryBuilding;
 
   return (
-    <div ref={barRef} style={{ top: "var(--toolbar-height)" }} className="z-20 border-b border-slate-200 bg-white/95 backdrop-blur sm:sticky dark:border-slate-700 dark:bg-slate-900/95">
-      <div className="workspace-shell grid grid-cols-2 items-end gap-3 py-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] lg:flex lg:min-h-14 lg:items-center lg:gap-5 lg:py-2">
+    <div className="border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+      <div className="workspace-shell grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-2 py-2.5 min-[800px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:flex lg:min-h-14 lg:items-center lg:gap-5 lg:py-2">
       {/* 翻译服务 */}
-      <div className="col-span-2 min-w-0 sm:col-span-1 lg:flex lg:w-[min(36%,380px)] lg:items-center lg:gap-2">
+      <div className="min-w-0 lg:flex lg:w-[min(36%,380px)] lg:items-center lg:gap-2">
         <label htmlFor="translation-service" className="mb-1.5 block shrink-0 text-xs text-slate-500 lg:mb-0 dark:text-slate-400">翻译服务</label>
         {profiles.length > 0 ? (
           <select
@@ -102,8 +85,27 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
         )}
       </div>
 
+      <div className="flex min-w-0 items-center justify-end min-[800px]:col-start-4 min-[800px]:row-start-1 lg:order-last lg:ml-auto">
+        {phase === "translating" ? (
+          <button type="button" className="btn-secondary whitespace-nowrap" onClick={cancel}>
+            停止翻译
+          </button>
+        ) : (
+          <button type="button" className="btn-primary whitespace-nowrap" onClick={start} disabled={!canTranslate}>
+            {phase === "done" || phase === "parsed"
+              ? remaining > 0
+                ? phase === "done"
+                  ? "继续翻译"
+                  : "开始翻译"
+                : "已全部翻译"
+              : "开始翻译"}
+          </button>
+        )}
+      </div>
+
+      <div className="col-span-2 grid grid-cols-2 gap-3 min-[800px]:contents">
       {/* 原始语言 */}
-      <div className="min-w-0 lg:flex lg:w-[210px] lg:items-center lg:gap-2">
+      <div className="min-[800px]:col-start-2 min-[800px]:row-start-1 min-w-0 lg:flex lg:w-[210px] lg:items-center lg:gap-2">
         <label htmlFor="source-language" className="mb-1.5 block shrink-0 text-xs text-slate-500 lg:mb-0 dark:text-slate-400">原文语言</label>
         <select
           className="input min-w-0 truncate lg:py-1.5"
@@ -122,7 +124,7 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       </div>
 
       {/* 目标语言 */}
-      <div className="min-w-0 lg:flex lg:w-[210px] lg:items-center lg:gap-2">
+      <div className="min-[800px]:col-start-3 min-[800px]:row-start-1 min-w-0 lg:flex lg:w-[210px] lg:items-center lg:gap-2">
         <label htmlFor="target-language" className="mb-1.5 block shrink-0 text-xs text-slate-500 lg:mb-0 dark:text-slate-400">译文语言</label>
         <select
           className="input min-w-0 truncate lg:py-1.5"
@@ -139,25 +141,9 @@ export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }) {
         </select>
       </div>
 
-      <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 sm:col-span-3 lg:ml-auto lg:flex-1">
-        {error && <span role="alert" className="w-full break-words text-xs text-red-600 lg:max-w-64">{error}</span>}
-        {phase === "translating" ? (
-          <button type="button" className="btn-secondary w-full sm:w-auto" onClick={cancel}>
-            停止翻译
-          </button>
-        ) : (
-          <button type="button" className="btn-primary w-full whitespace-nowrap sm:w-auto" onClick={start} disabled={!canTranslate}>
-            {phase === "done" || phase === "parsed"
-              ? remaining > 0
-                ? phase === "done"
-                  ? `继续翻译（剩 ${remaining}）`
-                  : "开始翻译"
-                : "已全部翻译"
-              : "开始翻译"}
-          </button>
-        )}
       </div>
       </div>
+      {error && <div role="alert" className="workspace-shell pb-2 text-xs text-red-600">{error}</div>}
     </div>
   );
 }

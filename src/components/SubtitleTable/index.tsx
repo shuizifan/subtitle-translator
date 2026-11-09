@@ -13,7 +13,7 @@ import { adjacentFailedId, getFailedEntryIds } from "@/core/navigation";
 const ROW_CV: CSSProperties = {
   contentVisibility: "auto",
   containIntrinsicSize: "auto 44px",
-  scrollMarginTop: "calc(var(--toolbar-height) + var(--control-bar-height) + 4rem)",
+  scrollMarginTop: "calc(var(--sticky-header-height, 0px) + 4rem)",
 };
 
 export function SubtitleTable() {
@@ -105,7 +105,7 @@ export function SubtitleTable() {
       )}
 
       {navigableFailures.length > 0 && (
-        <div style={{ top: "calc(var(--toolbar-height) + var(--control-bar-height))" }} className="sticky z-10 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-white/95 px-3 py-2 backdrop-blur dark:border-red-500/40 dark:bg-slate-800/95">
+        <div style={{ top: "calc(var(--sticky-header-height, 0px))" }} className="sticky z-10 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-white/95 px-3 py-2 backdrop-blur dark:border-red-500/40 dark:bg-slate-800/95">
           <span className="mr-auto text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
             翻译失败 {navigableFailures.length} 行
             {currentFailureIndex >= 0 ? ` · 第 ${currentFailureIndex + 1} / ${navigableFailures.length} 处（第 ${currentFailureId} 行）` : ""}

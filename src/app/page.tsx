@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useAppStore } from "@/store";
+import { AutoHideHeader } from "@/components/AutoHideHeader";
 import { Toolbar } from "@/components/Toolbar";
 import { ControlBar } from "@/components/ControlBar";
 import { SubtitleTable } from "@/components/SubtitleTable";
@@ -58,11 +59,13 @@ export default function Home() {
             </div>
           )}
 
-          <Toolbar onOpenSettings={() => setSettingsOpen(true)} />
+          <AutoHideHeader locked={settingsOpen}>
+            <Toolbar onOpenSettings={() => setSettingsOpen(true)} />
+            {hasDoc && <ControlBar onOpenSettings={() => setSettingsOpen(true)} />}
+          </AutoHideHeader>
 
           {hasDoc ? (
             <>
-              <ControlBar onOpenSettings={() => setSettingsOpen(true)} />
               <QueuePanel />
               <QualityPanel />
               <SubtitleTable />

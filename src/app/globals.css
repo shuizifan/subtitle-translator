@@ -8,7 +8,7 @@
   --ui-border: #dce3eb;
   --ui-focus: #0d9488;
   --toolbar-height: 64px;
-  --control-bar-height: 56px;
+  --sticky-header-height: 0px;
 }
 .dark {
   color-scheme: dark;
